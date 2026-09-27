@@ -15,6 +15,34 @@
 <body>
 <div id="view"></div>
 <nav id="parts"><div id="part-tabs"></div><div id="versions"></div></nav>
+<button id="edit-toggle" title="Выбрать деталь модели, подвинуть / повернуть / увеличить и сохранить">✎ Редактировать</button>
+
+<div id="edit-panel" hidden>
+  <div class="edit-head"><b>Редактирование</b><button id="edit-exit" title="Выйти (правки остаются на экране)">✕</button></div>
+  <p id="edit-sel" class="hint">Кликните по детали модели или выберите её здесь:</p>
+  <div id="edit-parts" class="grid"></div>
+  <div id="edit-tools" class="grid3">
+    <button data-tool="translate">Двигать<kbd>G</kbd></button>
+    <button data-tool="rotate">Вращать<kbd>R</kbd></button>
+    <button data-tool="scale">Масштаб<kbd>S</kbd></button>
+  </div>
+  <div id="edit-fields">
+    <label class="range">Масштаб, % <input type="number" id="edit-scale" step="1" min="1"></label>
+    <div class="xyz">Сдвиг, см
+      <label>X<input type="number" id="edit-x" step="0.5"></label>
+      <label>Y<input type="number" id="edit-y" step="0.5"></label>
+      <label>Z<input type="number" id="edit-z" step="0.5"></label>
+    </div>
+    <p class="hint">X — вправо, Y — вверх, Z — вперёд (к зрителю на виде спереди). Оси гизмо можно тянуть мышью.</p>
+  </div>
+  <div class="grid">
+    <button id="edit-reset">Сбросить деталь</button>
+    <button id="edit-reset-all">Сбросить всё</button>
+    <button id="edit-save" class="primary">Сохранить <kbd>Ctrl+S</kbd></button>
+    <button id="edit-glb">Скачать GLB</button>
+  </div>
+  <p id="edit-status" class="hint"></p>
+</div>
 
 <aside id="panel">
   <header>

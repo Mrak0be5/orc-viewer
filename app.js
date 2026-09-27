@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 const $ = (s) => document.querySelector(s);
 const TARGET_HEIGHT = 2.1;
@@ -261,6 +263,7 @@ async function loadModel(entry) {
   fillStats(gltf, entry);
   fillTextures();
   fillRefs(entry);
+  editOnLoad(gltf.scene);
   setCamera('front');
   $('#loading').hidden = true;
 }
@@ -511,6 +514,7 @@ $('#shot').onclick = () => {
   a.click();
 };
 addEventListener('keydown', (e) => {
+  if (edit.on && editKey(e)) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const k = e.key.toLowerCase();
   const m = MODES.find((x) => x.key === k);
@@ -519,6 +523,223 @@ addEventListener('keydown', (e) => {
   if (k === 'r') { const c = $('#autorotate'); c.checked = !c.checked; controls.autoRotate = c.checked; }
   if (e.key === 'Escape') $('#lightbox').hidden = true;
 });
+
+// ---------- edit mode: pick a part, move / rotate / scale it, save ----------
+// Parts are the top-level nodes of the loaded GLB (e.g. Orc_Base, Hair_01). Transforms are kept in GLB space
+// (metres, Y up, model facing +Z); saved edits live in localStorage per model and are re-applied on load,
+// «Сохранить» also downloads them as JSON so they can be applied to the source assets.
+const tc = new TransformControls(camera, renderer.domElement);
+tc.setSize(0.9);
+tc.enabled = false;
+scene.add(tc.getHelper());
+const editBox = new THREE.Box3Helper(new THREE.Box3(), 0xffc24d);
+editBox.visible = false;
+scene.add(editBox);
+const edit = { on: false, parts: [], sel: null, dirty: false };
+const PART_NAMES = { Orc_Base: 'Тело + голова' };
+const partLabel = (o) => PART_NAMES[o.name] || (/^Hair_(\d+)/.test(o.name) ? `Волосы ${o.name.slice(5)}` : o.name || 'Деталь');
+const editKeyName = () => `orc-edit:${current ? current.id : ''}`;
+
+tc.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value; });
+tc.addEventListener('objectChange', () => { fillEditFields(); markDirty(); });
+
+// Parts come with their origin at the model's feet; move each part's pivot to the centre of its bounds so the gizmo
+// sits on the part and scaling / rotating happens around it (world positions stay exactly the same).
+function repivot(part) {
+  part.updateMatrixWorld(true);
+  const inv = part.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  part.traverse((o) => {
+    if (!o.isMesh || o.userData.isHelper) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    box.union(o.geometry.boundingBox.clone().applyMatrix4(inv.clone().multiply(o.matrixWorld)));
+  });
+  const c = box.getCenter(new THREE.Vector3());
+  if (part.isMesh) part.geometry.translate(-c.x, -c.y, -c.z);   // overlays / quad lines share this geometry
+  else for (const ch of part.children) ch.position.sub(c);
+  part.position.add(c.clone().multiply(part.scale).applyQuaternion(part.quaternion));
+  // quad-line / overlay geometries share the moved vertex buffer but keep their own (now stale) bounds
+  part.traverse((o) => { if (o.geometry) { o.geometry.computeBoundingBox(); o.geometry.computeBoundingSphere(); } });
+}
+
+function editOnLoad(gscene) {
+  edit.parts = gscene.children.filter((o) => { let m = false; o.traverse((x) => { if (x.isMesh) m = true; }); return m; });
+  for (const p of edit.parts) {
+    repivot(p);
+    p.updateMatrix();
+    p.userData.base = { p: p.position.clone(), q: p.quaternion.clone(), s: p.scale.clone(), m: p.matrix.clone() };
+  }
+  edit.dirty = false;
+  select(null);
+  const saved = applySaved();
+  buildPartList();
+  $('#edit-toggle').textContent = saved ? `✎ Редактировать · правок: ${saved}` : '✎ Редактировать';
+  setStatus(saved ? `Применены сохранённые правки (${saved}) из этого браузера.` : '');
+}
+function buildPartList() {
+  const box = $('#edit-parts');
+  box.innerHTML = '';
+  for (const p of edit.parts) {
+    const b = document.createElement('button');
+    b.textContent = partLabel(p);
+    b.onclick = () => select(p);
+    p.userData.button = b;
+    box.append(b);
+  }
+}
+function setEdit(on) {
+  edit.on = on;
+  $('#edit-panel').hidden = !on;
+  $('#edit-toggle').classList.toggle('on', on);
+  tc.enabled = on;
+  if (!on) select(null);
+  else if (edit.parts.length === 1) select(edit.parts[0]);
+}
+function select(part) {
+  edit.sel = part;
+  if (part) { tc.attach(part); editBox.visible = true; } else { tc.detach(); editBox.visible = false; }
+  for (const p of edit.parts) p.userData.button && p.userData.button.classList.toggle('on', p === part);
+  $('#edit-sel').textContent = part ? `Выбрано: ${partLabel(part)}` : 'Кликните по детали модели или выберите её здесь:';
+  $('#edit-fields').classList.toggle('off', !part);
+  fillEditFields();
+}
+function setTool(mode) {
+  tc.setMode(mode);
+  for (const b of document.querySelectorAll('#edit-tools button')) b.classList.toggle('on', b.dataset.tool === mode);
+}
+function fillEditFields() {
+  const p = edit.sel;
+  if (!p) { for (const id of ['#edit-scale', '#edit-x', '#edit-y', '#edit-z']) $(id).value = ''; return; }
+  const b = p.userData.base;
+  $('#edit-scale').value = (p.scale.x / b.s.x * 100).toFixed(1);
+  const d = p.position.clone().sub(b.p).multiplyScalar(100);
+  $('#edit-x').value = d.x.toFixed(1); $('#edit-y').value = d.y.toFixed(1); $('#edit-z').value = d.z.toFixed(1);
+}
+function setScalePct(pct) {
+  const p = edit.sel;
+  if (!p || !(pct > 0)) return;
+  p.scale.copy(p.userData.base.s).multiplyScalar(pct / 100);
+  fillEditFields(); markDirty();
+}
+function setOffsetCm(xyz) {
+  const p = edit.sel;
+  if (!p) return;
+  p.position.copy(p.userData.base.p).add(new THREE.Vector3(...xyz.map((v) => (+v || 0) / 100)));
+  fillEditFields(); markDirty();
+}
+function resetPart(p) {
+  const b = p.userData.base;
+  p.position.copy(b.p); p.quaternion.copy(b.q); p.scale.copy(b.s);
+}
+function markDirty() { edit.dirty = true; setStatus('Есть несохранённые правки.'); }
+function setStatus(t) { $('#edit-status').textContent = t; }
+function isEdited(p) {
+  const b = p.userData.base;
+  return p.position.distanceTo(b.p) > 1e-5 || p.scale.distanceTo(b.s) > 1e-5 || p.quaternion.angleTo(b.q) > 1e-5;
+}
+function editsJSON() {
+  const parts = {};
+  for (const p of edit.parts) {
+    if (!isEdited(p)) continue;
+    const b = p.userData.base;
+    const e = new THREE.Euler().setFromQuaternion(b.q.clone().invert().multiply(p.quaternion));
+    p.updateMatrix();
+    parts[p.name] = {
+      label: partLabel(p),
+      // apply to the part as it is in the GLB: new = delta_matrix x old (column-major 4x4, glTF space)
+      delta_matrix: p.matrix.clone().multiply(b.m.clone().invert()).toArray().map((v) => +v.toFixed(6)),
+      pivot: b.p.toArray().map((v) => +v.toFixed(5)),
+      position: p.position.toArray(), quaternion: p.quaternion.toArray(), scale: p.scale.toArray(),
+      delta: {
+        move_cm: p.position.clone().sub(b.p).multiplyScalar(100).toArray().map((v) => +v.toFixed(2)),
+        rotate_deg: [e.x, e.y, e.z].map((v) => +THREE.MathUtils.radToDeg(v).toFixed(2)),
+        scale_pct: p.scale.toArray().map((v, i) => +(v / b.s.toArray()[i] * 100).toFixed(2)),
+      },
+    };
+  }
+  return { model: current.id, saved: new Date().toISOString(),
+    space: 'glTF: metres, Y up, model faces +Z. delta_matrix: new = delta_matrix x old for the part node; move/rotate/scale are about the part centre (pivot)', parts };
+}
+function applySaved() {
+  const raw = localStorage.getItem(editKeyName());
+  if (!raw) return 0;
+  let n = 0;
+  try {
+    for (const [name, t] of Object.entries(JSON.parse(raw).parts || {})) {
+      const p = edit.parts.find((x) => x.name === name);
+      if (!p) continue;
+      p.position.fromArray(t.position); p.quaternion.fromArray(t.quaternion); p.scale.fromArray(t.scale);
+      n++;
+    }
+  } catch (err) { console.warn('bad saved edits', err); }
+  return n;
+}
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function saveEdits() {
+  const data = editsJSON();
+  const n = Object.keys(data.parts).length;
+  if (n) localStorage.setItem(editKeyName(), JSON.stringify(data)); else localStorage.removeItem(editKeyName());
+  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${current.id}-edits.json`);
+  edit.dirty = false;
+  $('#edit-toggle').textContent = n ? `✎ Редактировать · правок: ${n}` : '✎ Редактировать';
+  setStatus(n ? `Сохранено в этом браузере (${new Date().toLocaleTimeString()}), файл правок ${current.id}-edits.json скачан.`
+              : 'Правок нет — сохранённое для этой модели удалено.');
+  return data;
+}
+async function exportGLB() {
+  setStatus('Готовлю GLB…');
+  const hidden = [];
+  scene.traverse((o) => { if ((o.isLineSegments || o.userData.isOverlay || o === o.parent?.userData.overlay) && o.visible) { o.visible = false; hidden.push(o); } });
+  for (const m of meshes) m.material = m.userData.orig;
+  try {
+    const glb = await new GLTFExporter().parseAsync(edit.parts, { binary: true, maxTextureSize: 4096 });
+    download(new Blob([glb], { type: 'model/gltf-binary' }), `${current.id}-edited.glb`);
+    setStatus(`GLB с правками скачан: ${current.id}-edited.glb (${(glb.byteLength / 1048576).toFixed(1)} МБ).`);
+  } catch (err) {
+    setStatus(`Не удалось собрать GLB: ${err.message}`);
+  } finally {
+    for (const o of hidden) o.visible = true;
+    applyMode(mode);
+  }
+}
+function editKey(e) {
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); saveEdits(); return true; }
+  if (e.target.tagName === 'INPUT') return false;
+  if (k === 'g') { setTool('translate'); return true; }
+  if (k === 'r') { setTool('rotate'); return true; }
+  if (k === 's') { setTool('scale'); return true; }
+  if (e.key === 'Escape') { select(null); return true; }
+  return false;
+}
+// click (not drag) on the model selects the part under the cursor
+let down = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, gizmo: tc.axis !== null }; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!edit.on || !down || down.gizmo || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  const hit = ray.intersectObjects(meshes, false)[0];
+  let p = hit && hit.object;
+  while (p && !edit.parts.includes(p)) p = p.parent;
+  select(p || null);
+});
+$('#edit-toggle').onclick = () => setEdit(!edit.on);
+$('#edit-exit').onclick = () => setEdit(false);
+for (const b of document.querySelectorAll('#edit-tools button')) b.onclick = () => setTool(b.dataset.tool);
+$('#edit-scale').onchange = (e) => setScalePct(+e.target.value);
+for (const id of ['#edit-x', '#edit-y', '#edit-z']) $(id).onchange = () => setOffsetCm([$('#edit-x').value, $('#edit-y').value, $('#edit-z').value]);
+$('#edit-reset').onclick = () => { if (edit.sel) { resetPart(edit.sel); fillEditFields(); markDirty(); } };
+$('#edit-reset-all').onclick = () => { for (const p of edit.parts) resetPart(p); fillEditFields(); markDirty(); };
+$('#edit-save').onclick = () => saveEdits();
+$('#edit-glb').onclick = () => exportGLB();
+setTool('translate');
 
 // ---------- loop ----------
 function resize() {
@@ -533,11 +754,27 @@ function resize() {
 }
 addEventListener('resize', resize);
 resize();
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+function frame() {
+  controls.update();
+  if (tc.camera !== camera) tc.camera = camera;
+  if (edit.sel) editBox.box.setFromObject(edit.sel);
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(frame);
 
 // Console / automation hook: viewer.render() draws a frame even when the tab is in the background.
 window.viewer = {
-  render: () => { controls.update(); renderer.render(scene, camera); },
+  render: frame,
+  edit: {
+    toggle: (on) => setEdit(on === undefined ? !edit.on : on),
+    select: (name) => select(edit.parts.find((p) => p.name === name) || null),
+    offset: (x, y, z) => setOffsetCm([x, y, z]),
+    scale: (pct) => setScalePct(pct),
+    save: () => saveEdits(),
+    json: () => editsJSON(),
+    glb: () => exportGLB(),
+    state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
+  },
   mode: (id) => applyMode(id),
   camera: (name) => setCamera(name),
   state: () => ({ model: current && current.id, mode, meshes: meshes.length, loading: !$('#loading').hidden, text: $('#loading-text').textContent }),
