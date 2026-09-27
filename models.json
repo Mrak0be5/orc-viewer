@@ -1,6 +1,143 @@
 {
   "models": [
     {
+      "id": "base-v1",
+      "part": "Сборка",
+      "label": "Тело + голова, шов сшит",
+      "polys": "26.4k граней · 23.0k квадов",
+      "date": "2026-09-27",
+      "note": "Голова Tripo 052933b7 + тело Tripo 1632a022, собрано в Blender 5.2, рост 2,10 м.\nГолова подогнана по размеру к голове тела (макушка–подбородок 0,31 м) и сдвинута на 2,9 см назад, чтобы совпали шеи.\nШов наклонный, под подбородком. Шея головы в 2,5 см над швом плавно подогнана к сечению шеи тела, края соединены мостом, полоса вокруг шва сглажена.\nТекстура головы у шва плавно переходит в текстуру тела (3,5 см), normal map головы там же гаснет — шов не виден ни по форме, ни по цвету.\nЗакрыты 32 микродыры сетки тела. 26 371 грань: 22 972 квада + 3 399 треугольников. Материалы: M_Orc_Head (цвет + нормали 4K), M_Orc_Body (цвет 4K).",
+      "source": "Tripo 052933b7 (голова) + 1632a022 (тело) → Blender",
+      "yaw": 0,
+      "height": 2.1,
+      "face": {
+        "top": 0.08,
+        "span": 0.17
+      },
+      "quads": true,
+      "parts": [
+        "models/orc-base-v1.glb"
+      ],
+      "bytes": 4665544,
+      "tripo": {
+        "settings": "Голова: мультивью H3.1 → Smart Low Poly → HD-текстура. Тело: мультивью Nexus 2.0, квады 25k, симметрия → HD-текстура",
+        "inputs": [
+          {
+            "slot": "Голова · Спереди",
+            "src": "refs/final-head-front.jpg"
+          },
+          {
+            "slot": "Голова · Слева",
+            "src": "refs/final-head-left.jpg"
+          },
+          {
+            "slot": "Голова · Сзади",
+            "src": "refs/final-head-back.jpg"
+          },
+          {
+            "slot": "Голова · Справа",
+            "src": "refs/final-head-right.jpg"
+          },
+          {
+            "slot": "Тело · Спереди",
+            "src": "refs/final-body-front.jpg"
+          },
+          {
+            "slot": "Тело · Слева",
+            "src": "refs/final-body-left.jpg"
+          },
+          {
+            "slot": "Тело · Сзади",
+            "src": "refs/final-body-back.jpg"
+          },
+          {
+            "slot": "Тело · Справа",
+            "src": "refs/final-body-right.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "head-tripo",
+      "part": "Голова",
+      "label": "Tripo · smart low poly + HD текстура",
+      "polys": "9.8k граней · 8.9k квадов",
+      "date": "2026-09-27",
+      "note": "Исходник головы из Tripo: 9 810 граней (8 893 квада + 917 треугольников), текстура 4K + normal map 4K.\nСгенерирована по 4K-видам головы (мультивью: спереди, слева, сзади, справа).",
+      "source": "Tripo 052933b7",
+      "yaw": -90,
+      "height": 0.45,
+      "face": {
+        "top": 0.42,
+        "span": 0.7
+      },
+      "quads": true,
+      "parts": [
+        "models/head-tripo.glb"
+      ],
+      "bytes": 4232852,
+      "tripo": {
+        "settings": "Мультивью H3.1 (detailed, 2M) → Smart Low Poly → текстура HD (detailed) по виду спереди",
+        "task": "052933b7",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/final-head-front.jpg"
+          },
+          {
+            "slot": "Слева",
+            "src": "refs/final-head-left.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/final-head-back.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "refs/final-head-right.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "body-tripo",
+      "part": "Тело",
+      "label": "Tripo · Nexus smart mesh + HD текстура",
+      "polys": "27.6k граней · 23.4k квадов",
+      "date": "2026-09-27",
+      "note": "Исходник тела из Tripo: 27 575 граней (23 412 квадов + 4 163 треугольника), текстура 4K.\nГолова тела в сборке заменена головой Tripo 052933b7.",
+      "source": "Tripo 1632a022",
+      "yaw": -90,
+      "height": 2.1,
+      "quads": true,
+      "parts": [
+        "models/body-tripo.glb"
+      ],
+      "bytes": 4696832,
+      "tripo": {
+        "settings": "Мультивью Nexus 2.0: квады, 25 000, симметрия → текстура HD (detailed) по виду спереди",
+        "task": "1632a022",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/final-body-front.jpg"
+          },
+          {
+            "slot": "Слева",
+            "src": "refs/final-body-left.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/final-body-back.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "refs/final-body-right.jpg"
+          }
+        ]
+      }
+    },
+    {
       "id": "t1-body",
       "title": "T1 · Тело — хайполи-источник (не игровая сетка)",
       "date": "2026-09-27",
@@ -16,7 +153,10 @@
         "refs/body-left.jpg",
         "refs/body-right.jpg",
         "refs/body-back.jpg"
-      ]
+      ],
+      "part": "Тело",
+      "label": "T1 · HD-источник (старый)",
+      "polys": "1.9M треуг."
     }
   ]
 }

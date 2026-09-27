@@ -45,3 +45,13 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
   #panel { top: 55vh; width: 100%; border-left: 0; border-top: 1px solid #2c2e33; }
   #loading { right: 0; bottom: calc(45vh + 16px); }
 }
+
+#parts { position: fixed; top: 12px; left: 12px; right: 332px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 2; }
+#parts > div { display: flex; flex-wrap: wrap; gap: 6px; }
+#parts button { pointer-events: auto; background: rgba(21,22,24,.85); backdrop-filter: blur(4px); }
+#part-tabs button { font-size: 14px; font-weight: 600; padding: 7px 14px; }
+#versions button { font-size: 12px; }
+#versions button small { color: #9aa0a8; margin-left: 6px; }
+#model-title { margin: 0; font-weight: 600; }
+.thumbs figcaption b { color: #cfd3d8; font-weight: 600; }
+@media (max-width: 800px) { #parts { right: 12px; } }

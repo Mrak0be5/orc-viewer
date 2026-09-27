@@ -112,12 +112,45 @@ const MODES = [
 let mode = 'pbr';
 const meshes = [];
 const modeCache = new Map(); // mesh.uuid + mode -> material
+const wireBaseMat = new THREE.MeshBasicMaterial({ color: 0x1f2125, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+const quadWireMat = new THREE.LineBasicMaterial({ color: 0x9fb4ff });
+const quadOverlayMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false });
+
+// Quad meshes arrive triangulated; Tripo writes each quad as two consecutive triangles.
+// Rebuild the quad edges (dropping the diagonals) so the wireframe shows the real topology.
+function quadLines(mesh) {
+  const g = mesh.geometry, idx = g.index && g.index.array;
+  if (!idx) return null;
+  const tris = idx.length / 3, seen = new Set(), out = [];
+  let quads = 0;
+  const add = (a, b) => { const k = a < b ? a * 4294967296 + b : b * 4294967296 + a; if (!seen.has(k)) { seen.add(k); out.push(a, b); } };
+  for (let t = 0; t < tris; t += 2) {
+    const A = [idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]];
+    const B = t + 1 < tris ? [idx[t * 3 + 3], idx[t * 3 + 4], idx[t * 3 + 5]] : [];
+    const shared = A.filter((v) => B.includes(v));
+    if (shared.length === 2) quads++;
+    for (const T of B.length ? [A, B] : [A]) for (let i = 0; i < 3; i++) {
+      const a = T[i], b = T[(i + 1) % 3];
+      if (shared.length === 2 && shared.includes(a) && shared.includes(b)) continue;
+      add(a, b);
+    }
+  }
+  if (quads < tris / 2 * 0.9) return null; // not a quad mesh
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', g.attributes.position);
+  lg.setIndex(out);
+  const lines = new THREE.LineSegments(lg, quadOverlayMat);
+  lines.renderOrder = 1;
+  lines.userData.quads = quads;
+  return lines;
+}
 
 function applyMode(id) {
   mode = id;
   for (const mesh of meshes) {
     const orig = mesh.userData.orig;
     if (id === 'pbr') { mesh.material = MODES[0].make(orig); continue; }
+    if (id === 'wire' && mesh.userData.quadLines) { mesh.material = wireBaseMat; continue; }
     const k = mesh.uuid + id + useNormalMap();
     if (!modeCache.has(k)) modeCache.set(k, MODES.find((m) => m.id === id).make(orig));
     mesh.material = modeCache.get(k);
@@ -140,6 +173,13 @@ const overlayMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: tru
 function applyOverlay() {
   const on = $('#wire-overlay').checked && mode !== 'wire';
   for (const mesh of meshes) {
+    const q = mesh.userData.quadLines;
+    if (q) {
+      q.visible = on || mode === 'wire';
+      q.material = mode === 'wire' ? quadWireMat : quadOverlayMat;
+      for (const mat of [].concat(mesh.material)) { mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 1; }
+      continue;
+    }
     let o = mesh.userData.overlay;
     if (on && !o) {
       o = new THREE.Mesh(mesh.geometry, overlayMat);
@@ -189,7 +229,10 @@ function setProgress(f, text) {
 
 async function loadModel(entry) {
   current = entry;
+  $('#model-title').textContent = `${entry.part || ''} · ${entry.label || entry.title}`;
   $('#model-note').textContent = entry.note || '';
+  markNav();
+  history.replaceState(null, '', `?m=${entry.id}`);
   root.clear(); meshes.length = 0; modeCache.clear();
   const buffer = await fetchParts(entry.parts, entry.bytes);
   setProgress(1, 'Распаковка…');
@@ -199,6 +242,10 @@ async function loadModel(entry) {
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) m.userData.normalMap = m.normalMap;
     o.userData.orig = o.material;
+    if (entry.quads) {
+      const q = quadLines(o);
+      if (q) { q.visible = false; o.add(q); o.userData.quadLines = q; }
+    }
     meshes.push(o);
   });
   // Tripo exports face +X; entry.yaw turns the model to face +Z (the viewer's "front").
@@ -219,7 +266,7 @@ async function loadModel(entry) {
 // Center on X/Z, feet at 0, optional scale to 2.10 m.
 function normalize() {
   const size = rawBox.getSize(new THREE.Vector3());
-  const s = $('#scale21').checked && size.y > 0 ? TARGET_HEIGHT / size.y : 1;
+  const s = $('#scale21').checked && size.y > 0 ? (current.height || TARGET_HEIGHT) / size.y : 1;
   const model = root.children[0];
   if (!model) return;
   model.scale.setScalar(s);
@@ -276,7 +323,9 @@ function fillStats(gltf, entry) {
     }
   });
   const size = rawBox.getSize(new THREE.Vector3());
+  const quads = meshes.reduce((n, m) => n + (m.userData.quadLines ? m.userData.quadLines.userData.quads : 0), 0);
   const rows = [
+    ...(quads ? [['Квады', quads.toLocaleString('ru-RU')]] : []),
     ['Треугольники', Math.round(tris).toLocaleString('ru-RU')],
     ['Вершины', verts.toLocaleString('ru-RU')],
     ['Меши / материалы', `${meshesN} / ${mats.size}`],
@@ -322,17 +371,48 @@ function fillTextures() {
 function fillRefs(entry) {
   const box = $('#refs');
   box.innerHTML = '';
-  for (const r of entry.refs || []) {
+  const t = entry.tripo || {};
+  $('#tripo-info').textContent = [t.settings, t.task && `Задача: ${t.task}`, t.credits && `Стоимость: ${t.credits} кр.`].filter(Boolean).join(' · ');
+  const inputs = t.inputs || (entry.refs || []).map((src) => ({ src }));
+  for (const r of inputs) {
     const fig = document.createElement('figure');
     const img = document.createElement('img');
-    img.src = r; img.loading = 'lazy';
+    img.src = r.src; img.loading = 'lazy';
     const cap = document.createElement('figcaption');
-    cap.textContent = r.split('/').pop();
+    const name = r.src.split('/').pop();
+    cap.innerHTML = r.slot ? `<b>${r.slot}</b> ${name}` : name;
     fig.append(img, cap);
-    fig.onclick = () => openLightbox({ src: r, caption: cap.textContent });
+    fig.onclick = () => openLightbox({ src: r.src, caption: `${r.slot ? r.slot + ' — ' : ''}${name}` });
     box.append(fig);
   }
 }
+
+// ---------- part / version navigation ----------
+function buildNav() {
+  const parts = [...new Set(manifest.models.map((m) => m.part || 'Модель'))];
+  $('#part-tabs').innerHTML = '';
+  for (const p of parts) {
+    const b = document.createElement('button');
+    b.textContent = p;
+    b.dataset.part = p;
+    b.onclick = () => loadModel(manifest.models.find((m) => (m.part || 'Модель') === p)).catch(showError);
+    $('#part-tabs').append(b);
+  }
+}
+function markNav() {
+  const part = current.part || 'Модель';
+  for (const b of document.querySelectorAll('#part-tabs button')) b.classList.toggle('on', b.dataset.part === part);
+  const box = $('#versions');
+  box.innerHTML = '';
+  for (const m of manifest.models.filter((x) => (x.part || 'Модель') === part)) {
+    const b = document.createElement('button');
+    b.innerHTML = `${m.label || m.title}${m.polys ? `<small>${m.polys}</small>` : ''}`;
+    b.classList.toggle('on', m.id === current.id);
+    b.onclick = () => loadModel(m).catch(showError);
+    box.append(b);
+  }
+}
+function showError(err) { setProgress(0, `Ошибка: ${err.message}`); }
 function openLightbox({ src, tex, caption }) {
   const lb = $('#lightbox');
   const img = lb.querySelector('img'), cv = lb.querySelector('canvas');
@@ -359,7 +439,10 @@ function setCamera(name) {
     case 'right': dir = new THREE.Vector3(-1, 0, 0); break;
     case 'top': dir = new THREE.Vector3(0, 1, 0.001); span = Math.max(size.x, size.z) * 1.2; break;
     case 'three': dir = new THREE.Vector3(0.8, 0.25, 1).normalize(); break;
-    case 'face': dir = new THREE.Vector3(0.35, 0.05, 1).normalize(); target = new THREE.Vector3(c.x, box.max.y - h * 0.075, c.z); span = h * 0.2; break;
+    case 'face': {
+      const f = (current && current.face) || { top: 0.075, span: 0.2 };
+      dir = new THREE.Vector3(0.35, 0.05, 1).normalize(); target = new THREE.Vector3(c.x, box.max.y - h * f.top, c.z); span = h * f.span; break;
+    }
   }
   const dist = span / 2 / Math.tan(THREE.MathUtils.degToRad(persp.fov / 2));
   persp.position.copy(target).addScaledVector(dir, dist);
@@ -417,7 +500,6 @@ $('#tonemap').onchange = (e) => {
   for (const mesh of meshes) [].concat(mesh.material).forEach((m) => { m.needsUpdate = true; });
 };
 $('#bg').onchange = (e) => { scene.background = new THREE.Color(e.target.value); };
-$('#model').onchange = (e) => loadModel(manifest.models.find((m) => m.id === e.target.value));
 lightRig.rotation.y = THREE.MathUtils.degToRad(35);
 $('#shot').onclick = () => {
   renderer.render(scene, camera);
@@ -461,8 +543,6 @@ window.viewer = {
 
 // ---------- start ----------
 manifest = await (await fetch('models.json', { cache: 'no-cache' })).json();
-for (const m of manifest.models) $('#model').append(new Option(m.title, m.id));
+buildNav();
 const wanted = new URLSearchParams(location.search).get('m');
-const first = manifest.models.find((m) => m.id === wanted) || manifest.models[0];
-$('#model').value = first.id;
-loadModel(first).catch((err) => setProgress(0, `Ошибка: ${err.message}`));
+loadModel(manifest.models.find((m) => m.id === wanted) || manifest.models[0]).catch(showError);

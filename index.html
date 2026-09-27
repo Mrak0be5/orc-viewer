@@ -14,11 +14,12 @@
 </head>
 <body>
 <div id="view"></div>
+<nav id="parts"><div id="part-tabs"></div><div id="versions"></div></nav>
 
 <aside id="panel">
   <header>
     <h1>Orc Warrior</h1>
-    <select id="model"></select>
+    <p id="model-title"></p>
     <p id="model-note"></p>
   </header>
 
@@ -31,7 +32,7 @@
     <h2>Наложения</h2>
     <label><input type="checkbox" id="wire-overlay"> Сетка поверх (E)</label>
     <label><input type="checkbox" id="normal-map-on" checked> Normal map в PBR/глине</label>
-    <label><input type="checkbox" id="scale21" checked> Масштаб: рост 2.10 м</label>
+    <label><input type="checkbox" id="scale21" checked> Реальный масштаб (тело 2.10 м)</label>
     <label><input type="checkbox" id="ruler" checked> Линейка роста</label>
     <label><input type="checkbox" id="grid-on" checked> Пол-сетка</label>
     <label><input type="checkbox" id="autorotate"> Автоповорот (R)</label>
@@ -77,7 +78,8 @@
   </section>
 
   <section>
-    <h2>Рефы</h2>
+    <h2>Загружено в Tripo</h2>
+    <p id="tripo-info" class="hint"></p>
     <div id="refs" class="thumbs"></div>
   </section>
 
