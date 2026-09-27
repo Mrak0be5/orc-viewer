@@ -25,8 +25,9 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
 #stats td { padding: 2px 0; border-bottom: 1px solid #23252a; }
 #stats td:last-child { text-align: right; color: #cfd3d8; font-variant-numeric: tabular-nums; }
 
-.thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.thumbs figure { margin: 0; cursor: zoom-in; }
+.thumbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+#refs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.thumbs figure { margin: 0; min-width: 0; cursor: zoom-in; }
 .thumbs canvas, .thumbs img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #0e0f11; border: 1px solid #2c2e33; border-radius: 4px; display: block; }
 .thumbs figcaption { font-size: 11px; color: #9aa0a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
