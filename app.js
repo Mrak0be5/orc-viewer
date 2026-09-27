@@ -116,26 +116,28 @@ const wireBaseMat = new THREE.MeshBasicMaterial({ color: 0x1f2125, polygonOffset
 const quadWireMat = new THREE.LineBasicMaterial({ color: 0x9fb4ff });
 const quadOverlayMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false });
 
-// Quad meshes arrive triangulated; Tripo writes each quad as two consecutive triangles.
+// Quad meshes arrive triangulated; each quad is written as two consecutive triangles sharing an edge
+// (mixed meshes interleave lone triangles, so walk the list instead of assuming even pairs).
 // Rebuild the quad edges (dropping the diagonals) so the wireframe shows the real topology.
 function quadLines(mesh) {
   const g = mesh.geometry, idx = g.index && g.index.array;
   if (!idx) return null;
   const tris = idx.length / 3, seen = new Set(), out = [];
-  let quads = 0;
+  let quads = 0, lone = 0;
   const add = (a, b) => { const k = a < b ? a * 4294967296 + b : b * 4294967296 + a; if (!seen.has(k)) { seen.add(k); out.push(a, b); } };
-  for (let t = 0; t < tris; t += 2) {
+  for (let t = 0; t < tris;) {
     const A = [idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]];
     const B = t + 1 < tris ? [idx[t * 3 + 3], idx[t * 3 + 4], idx[t * 3 + 5]] : [];
     const shared = A.filter((v) => B.includes(v));
-    if (shared.length === 2) quads++;
-    for (const T of B.length ? [A, B] : [A]) for (let i = 0; i < 3; i++) {
+    const isQuad = shared.length === 2;
+    for (const T of isQuad ? [A, B] : [A]) for (let i = 0; i < 3; i++) {
       const a = T[i], b = T[(i + 1) % 3];
-      if (shared.length === 2 && shared.includes(a) && shared.includes(b)) continue;
+      if (isQuad && shared.includes(a) && shared.includes(b)) continue;
       add(a, b);
     }
+    if (isQuad) { quads++; t += 2; } else { lone++; t += 1; }
   }
-  if (quads < tris / 2 * 0.9) return null; // not a quad mesh
+  if (quads < (quads + lone) * 0.6) return null; // not a quad mesh
   const lg = new THREE.BufferGeometry();
   lg.setAttribute('position', g.attributes.position);
   lg.setIndex(out);
