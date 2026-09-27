@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "id": "t1-body",
+      "title": "T1 · Тело — сырой хайполи Tripo",
+      "date": "2026-09-27",
+      "note": "Tripo H3.1 Макс.кач., Ультра, 2M tris, 4K PBR, «Удалить освещение».\nМультивью: спереди / слева / справа (зеркало) / сзади, реф 12-body-clean.\nГолова на этой модели временная — её заменит отдельная генерация T2.",
+      "source": "Tripo 8afa48fd",
+      "yaw": -90,
+      "parts": ["models/t1-body.glb"],
+      "bytes": 16210100,
+      "refs": ["refs/body-front.jpg", "refs/body-left.jpg", "refs/body-right.jpg", "refs/body-back.jpg"]
+    }
+  ]
+}

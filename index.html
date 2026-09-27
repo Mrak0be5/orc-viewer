@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orc Warrior — просмотр моделей</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="view"></div>
+
+<aside id="panel">
+  <header>
+    <h1>Orc Warrior</h1>
+    <select id="model"></select>
+    <p id="model-note"></p>
+  </header>
+
+  <section>
+    <h2>Шейдер <small>клавиши 1–0, Q, W</small></h2>
+    <div id="modes" class="grid"></div>
+  </section>
+
+  <section>
+    <h2>Наложения</h2>
+    <label><input type="checkbox" id="wire-overlay"> Сетка поверх (E)</label>
+    <label><input type="checkbox" id="normal-map-on" checked> Normal map в PBR/глине</label>
+    <label><input type="checkbox" id="scale21" checked> Масштаб: рост 2.10 м</label>
+    <label><input type="checkbox" id="ruler" checked> Линейка роста</label>
+    <label><input type="checkbox" id="grid-on" checked> Пол-сетка</label>
+    <label><input type="checkbox" id="autorotate"> Автоповорот (R)</label>
+  </section>
+
+  <section>
+    <h2>Камера</h2>
+    <div class="grid">
+      <button data-cam="front">Спереди</button>
+      <button data-cam="back">Сзади</button>
+      <button data-cam="left">Слева</button>
+      <button data-cam="right">Справа</button>
+      <button data-cam="face">Лицо</button>
+      <button data-cam="top">Сверху</button>
+      <button data-cam="three">3/4</button>
+      <button id="ortho">Орто: выкл</button>
+    </div>
+    <p class="hint">ЛКМ — вращать, ПКМ — сдвиг, колесо — зум, двойной клик — центр на точку.</p>
+  </section>
+
+  <section>
+    <h2>Свет</h2>
+    <label class="range">Окружение <input type="range" id="env" min="0" max="3" step="0.05" value="1"></label>
+    <label class="range">Ключевой свет <input type="range" id="key" min="0" max="5" step="0.05" value="1.5"></label>
+    <label class="range">Поворот света <input type="range" id="rot" min="0" max="360" step="1" value="35"></label>
+    <label class="range">Экспозиция <input type="range" id="exposure" min="0.2" max="3" step="0.05" value="1"></label>
+    <label class="range">Тонмаппинг
+      <select id="tonemap"><option value="neutral">Neutral</option><option value="agx">AgX</option><option value="aces">ACES</option><option value="none">Нет</option></select>
+    </label>
+    <label class="range">Фон
+      <select id="bg"><option value="#26282c">Тёмно-серый</option><option value="#808080">Серый 50%</option><option value="#f2f2f2">Белый</option><option value="#000000">Чёрный</option></select>
+    </label>
+  </section>
+
+  <section>
+    <h2>Статистика</h2>
+    <table id="stats"></table>
+  </section>
+
+  <section>
+    <h2>Текстуры</h2>
+    <div id="textures" class="thumbs"></div>
+  </section>
+
+  <section>
+    <h2>Рефы</h2>
+    <div id="refs" class="thumbs"></div>
+  </section>
+
+  <section>
+    <button id="shot" class="wide">Скриншот PNG</button>
+  </section>
+</aside>
+
+<div id="loading"><div id="bar"><i></i></div><span id="loading-text">Загрузка…</span></div>
+<div id="lightbox" hidden><img alt=""><canvas></canvas><span></span></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
