@@ -136,7 +136,7 @@ for (const m of MODES) {
 }
 
 // wireframe overlay: a second draw of the same geometry
-const overlayMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.28, depthWrite: false });
+const overlayMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false });
 function applyOverlay() {
   const on = $('#wire-overlay').checked && mode !== 'wire';
   for (const mesh of meshes) {
