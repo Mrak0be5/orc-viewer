@@ -544,6 +544,8 @@ function partLabel(o) {
   if (m) return `Волосы ${m[1]}`;
   m = /^Boot_(\d+)_([RL])$/.exec(o.name);
   if (m) return `Ботинок ${m[1]} ${SIDE[m[2]]}`;
+  m = /^Bracer_(\d+)_([RL])$/.exec(o.name);
+  if (m) return `Наруч ${m[1]} ${SIDE[m[2]]}`;
   return o.name || 'Деталь';
 }
 // left/right pairs (<name>_R / <name>_L, mirror images across x = 0): editing one moves the other mirrored
