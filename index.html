@@ -33,13 +33,14 @@
       <label>Y<input type="number" id="edit-y" step="0.5"></label>
       <label>Z<input type="number" id="edit-z" step="0.5"></label>
     </div>
+    <label class="check"><input type="checkbox" id="edit-mirror" checked> Пары левый/правый — зеркально</label>
     <p class="hint">X — вправо, Y — вверх, Z — вперёд (к зрителю на виде спереди). Оси гизмо можно тянуть мышью.</p>
   </div>
   <div class="grid">
     <button id="edit-reset">Сбросить деталь</button>
     <button id="edit-reset-all">Сбросить всё</button>
-    <button id="edit-save" class="primary">Сохранить <kbd>Ctrl+S</kbd></button>
-    <button id="edit-glb">Скачать GLB</button>
+    <button id="edit-save" class="primary" title="Запомнить положение деталей (без скачивания файлов)">Сохранить <kbd>Ctrl+S</kbd></button>
+    <button id="edit-glb" title="Скачать модель с текущими правками">Скачать GLB</button>
   </div>
   <p id="edit-status" class="hint"></p>
 </div>

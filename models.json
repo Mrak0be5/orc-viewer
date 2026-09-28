@@ -1,6 +1,48 @@
 {
   "models": [
     {
+      "id": "base-v1-hair-01-boots",
+      "part": "Сборка",
+      "label": "База + волосы 01 + ботинки 01",
+      "polys": "26.4k + 26.2k + 2×5.6k",
+      "date": "2026-09-28",
+      "note": "Ботинки поставлены как в концепте: наколенник на колене (верх 0,70 м), подошва на полу, голенище по голени; равномерный масштаб 0,70, сетка не менялась. Левый — зеркальная копия правого.\nБотинок меньше ноги орчихи (стопа и икра выходят наружу) — размер и положение настраиваются в режиме «✎ Редактировать»: правишь один ботинок — второй повторяет зеркально; «Сохранить» запоминает положение.\nБотинки пока без текстуры (умная сетка Tripo без UV).",
+      "source": "base-v1 + Tripo 857df680 + Tripo dc5d7d75",
+      "yaw": 0,
+      "height": 2.268,
+      "face": {
+        "top": 0.145,
+        "span": 0.16
+      },
+      "quads": true,
+      "parts": [
+        "models/orc-base-v1-hair-01-boots.glb"
+      ],
+      "bytes": 9124840,
+      "tripo": {
+        "settings": "Умная сетка P2.0: мультивью, «Четырехугольник», 5 000 полигонов",
+        "task": "dc5d7d75",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/final-boot-front.jpg"
+          },
+          {
+            "slot": "Слева",
+            "src": "refs/final-boot-left.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/final-boot-back.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "refs/final-boot-right.jpg"
+          }
+        ]
+      }
+    },
+    {
       "id": "base-v1-hair-01-asis",
       "part": "Сборка",
       "label": "База + волосы 01",
@@ -276,6 +318,44 @@
           {
             "slot": "Справа",
             "src": "refs/final-hair-right.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "boots-01",
+      "part": "Ботинки",
+      "label": "01 · пара на ногах",
+      "polys": "2×5.6k граней",
+      "date": "2026-09-28",
+      "note": "Правый ботинок и его зеркальная копия в координатах базы (без неё). Без текстуры.",
+      "source": "Tripo dc5d7d75",
+      "yaw": 0,
+      "height": 0.7,
+      "quads": true,
+      "parts": [
+        "models/boots-01.glb"
+      ],
+      "bytes": 381924,
+      "tripo": {
+        "settings": "Умная сетка P2.0: мультивью, «Четырехугольник», 5 000 полигонов",
+        "task": "dc5d7d75",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/final-boot-front.jpg"
+          },
+          {
+            "slot": "Слева",
+            "src": "refs/final-boot-left.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/final-boot-back.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "refs/final-boot-right.jpg"
           }
         ]
       }

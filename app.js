@@ -537,11 +537,36 @@ editBox.visible = false;
 scene.add(editBox);
 const edit = { on: false, parts: [], sel: null, dirty: false };
 const PART_NAMES = { Orc_Base: 'Тело + голова' };
-const partLabel = (o) => PART_NAMES[o.name] || (/^Hair_(\d+)/.test(o.name) ? `Волосы ${o.name.slice(5)}` : o.name || 'Деталь');
+const SIDE = { R: 'правый', L: 'левый' };
+function partLabel(o) {
+  if (PART_NAMES[o.name]) return PART_NAMES[o.name];
+  let m = /^Hair_(\d+)/.exec(o.name);
+  if (m) return `Волосы ${m[1]}`;
+  m = /^Boot_(\d+)_([RL])$/.exec(o.name);
+  if (m) return `Ботинок ${m[1]} ${SIDE[m[2]]}`;
+  return o.name || 'Деталь';
+}
+// left/right pairs (<name>_R / <name>_L, mirror images across x = 0): editing one moves the other mirrored
+const MIRROR_X = new THREE.Matrix4().makeScale(-1, 1, 1);
+function linkPairs() {
+  for (const p of edit.parts) {
+    const m = /^(.*)_([RL])$/.exec(p.name);
+    const q = m && edit.parts.find((x) => x.name === `${m[1]}_${m[2] === 'R' ? 'L' : 'R'}`);
+    p.userData.partner = q || null;
+    // fixed local reflection K with  partner = MIRROR_X * part * K  (from the loaded placement)
+    if (q) p.userData.mirrorK = MIRROR_X.clone().multiply(p.userData.base.m).invert().multiply(q.userData.base.m);
+  }
+}
+function syncMirror(p) {
+  const q = p && p.userData.partner;
+  if (!q || !$('#edit-mirror').checked) return;
+  p.updateMatrix();
+  MIRROR_X.clone().multiply(p.matrix).multiply(p.userData.mirrorK).decompose(q.position, q.quaternion, q.scale);
+}
 const editKeyName = () => `orc-edit:${current ? current.id : ''}`;
 
 tc.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value; });
-tc.addEventListener('objectChange', () => { fillEditFields(); markDirty(); });
+tc.addEventListener('objectChange', () => { syncMirror(edit.sel); fillEditFields(); markDirty(); });
 
 // Parts come with their origin at the model's feet; move each part's pivot to the centre of its bounds so the gizmo
 // sits on the part and scaling / rotating happens around it (world positions stay exactly the same).
@@ -569,12 +594,13 @@ function editOnLoad(gscene) {
     p.updateMatrix();
     p.userData.base = { p: p.position.clone(), q: p.quaternion.clone(), s: p.scale.clone(), m: p.matrix.clone() };
   }
+  linkPairs();
   edit.dirty = false;
   select(null);
   const saved = applySaved();
   buildPartList();
   $('#edit-toggle').textContent = saved ? `✎ Редактировать · правок: ${saved}` : '✎ Редактировать';
-  setStatus(saved ? `Применены сохранённые правки (${saved}) из этого браузера.` : '');
+  setStatus(saved ? `Применено сохранённое положение: ${saved} дет.` : '');
 }
 function buildPartList() {
   const box = $('#edit-parts');
@@ -619,13 +645,13 @@ function setScalePct(pct) {
   const p = edit.sel;
   if (!p || !(pct > 0)) return;
   p.scale.copy(p.userData.base.s).multiplyScalar(pct / 100);
-  fillEditFields(); markDirty();
+  syncMirror(p); fillEditFields(); markDirty();
 }
 function setOffsetCm(xyz) {
   const p = edit.sel;
   if (!p) return;
   p.position.copy(p.userData.base.p).add(new THREE.Vector3(...xyz.map((v) => (+v || 0) / 100)));
-  fillEditFields(); markDirty();
+  syncMirror(p); fillEditFields(); markDirty();
 }
 function resetPart(p) {
   const b = p.userData.base;
@@ -669,7 +695,7 @@ function applySaved() {
       const p = edit.parts.find((x) => x.name === name);
       if (!p) continue;
       p.position.fromArray(t.position); p.quaternion.fromArray(t.quaternion); p.scale.fromArray(t.scale);
-      n++;
+      if (isEdited(p)) n++;                   // a placement already written into the files counts as nothing
     }
   } catch (err) { console.warn('bad saved edits', err); }
   return n;
@@ -681,15 +707,25 @@ function download(blob, name) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+function describe(t) {
+  const d = t.delta;
+  const move = d.move_cm.map((v) => (v >= 0 ? '+' : '') + v.toFixed(1));
+  const bits = [`сдвиг X ${move[0]}, Y ${move[1]}, Z ${move[2]} см`];
+  if (d.rotate_deg.some((v) => Math.abs(v) > 0.05)) bits.push(`поворот ${d.rotate_deg.map((v) => v.toFixed(1)).join(' / ')}°`);
+  if (d.scale_pct.some((v) => Math.abs(v - 100) > 0.05)) bits.push(`масштаб ${d.scale_pct[0].toFixed(1)}%`);
+  return `${t.label}: ${bits.join(', ')}`;
+}
+// «Сохранить» keeps only the placement (coordinates) of the parts — nothing is downloaded. It is stored per model
+// and re-applied whenever the model is opened; the values are absolute, so once a placement is written into the
+// model files it simply matches them.
 function saveEdits() {
   const data = editsJSON();
   const n = Object.keys(data.parts).length;
   if (n) localStorage.setItem(editKeyName(), JSON.stringify(data)); else localStorage.removeItem(editKeyName());
-  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${current.id}-edits.json`);
   edit.dirty = false;
   $('#edit-toggle').textContent = n ? `✎ Редактировать · правок: ${n}` : '✎ Редактировать';
-  setStatus(n ? `Сохранено в этом браузере (${new Date().toLocaleTimeString()}), файл правок ${current.id}-edits.json скачан.`
-              : 'Правок нет — сохранённое для этой модели удалено.');
+  setStatus(n ? `Положение сохранено (${new Date().toLocaleTimeString()}). ${Object.values(data.parts).map(describe).join('; ')}.`
+              : 'Всё на исходных местах — сохранённое положение для этой модели удалено.');
   return data;
 }
 async function exportGLB() {
@@ -735,7 +771,7 @@ $('#edit-exit').onclick = () => setEdit(false);
 for (const b of document.querySelectorAll('#edit-tools button')) b.onclick = () => setTool(b.dataset.tool);
 $('#edit-scale').onchange = (e) => setScalePct(+e.target.value);
 for (const id of ['#edit-x', '#edit-y', '#edit-z']) $(id).onchange = () => setOffsetCm([$('#edit-x').value, $('#edit-y').value, $('#edit-z').value]);
-$('#edit-reset').onclick = () => { if (edit.sel) { resetPart(edit.sel); fillEditFields(); markDirty(); } };
+$('#edit-reset').onclick = () => { if (edit.sel) { resetPart(edit.sel); syncMirror(edit.sel); fillEditFields(); markDirty(); } };
 $('#edit-reset-all').onclick = () => { for (const p of edit.parts) resetPart(p); fillEditFields(); markDirty(); };
 $('#edit-save').onclick = () => saveEdits();
 $('#edit-glb').onclick = () => exportGLB();
