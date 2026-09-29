@@ -1,6 +1,52 @@
 {
   "models": [
     {
+      "id": "outfit-v3-pbr",
+      "part": "Сборка",
+      "label": "Комплект из Tripo, юбка v3 + PBR-карты",
+      "polys": "26.4k + 26.2k + 2×2.8k + 2×3.0k + 2×8.7k + 13.6k",
+      "date": "2026-09-29",
+      "note": "Та же сборка, что «юбка v3», но со всеми картами из Tripo: для каждой модели (правый комплект, юбка, волосы, тело, голова) запущен PBR Generator (5 кр.), и его normal / roughness / metallic 4K надеты на материалы — сетка и UV у PBR-версий совпадают один в один.\nВолосы импортированы заново из Tripo 857df680 (PBR-версия) и поставлены точно на место старых.\nПолигонаж — в квадах.",
+      "source": "base-v1 (PBR 13960076 / efd3cbc1) + Tripo 857df680 (PBR 9456a4a8) + cba35cc1 (PBR a8683990) + a325d50a (PBR 2a761011)",
+      "yaw": 0,
+      "height": 2.267,
+      "face": {
+        "top": 0.145,
+        "span": 0.16
+      },
+      "quads": true,
+      "parts": [
+        "models/orc-outfit-v3-pbr.glb"
+      ],
+      "bytes": 22291992,
+      "tripo": {
+        "settings": "Правый комплект: image-to-model по виду спереди, текстура перезапечена (HD). Юбка: мультивью по 4 видам, 25 000 граней, текстура 8K",
+        "task": "cba35cc1 + a325d50a",
+        "inputs": [
+          {
+            "slot": "Комплект · спереди",
+            "src": "refs/outfit-rightset-front.jpg"
+          },
+          {
+            "slot": "Юбка · спереди",
+            "src": "refs/outfit-skirt-front.jpg"
+          },
+          {
+            "slot": "Юбка · слева",
+            "src": "refs/outfit-skirt-left.jpg"
+          },
+          {
+            "slot": "Юбка · справа",
+            "src": "refs/outfit-skirt-right.jpg"
+          },
+          {
+            "slot": "Юбка · сзади",
+            "src": "refs/outfit-skirt-back.jpg"
+          }
+        ]
+      }
+    },
+    {
       "id": "outfit-v3",
       "part": "Сборка",
       "label": "Комплект из Tripo, юбка v3 (мех открыт сзади)",
