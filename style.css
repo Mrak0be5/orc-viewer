@@ -24,6 +24,13 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
 #stats { width: 100%; border-collapse: collapse; }
 #stats td { padding: 2px 0; border-bottom: 1px solid #23252a; }
 #stats td:last-child { text-align: right; color: #cfd3d8; font-variant-numeric: tabular-nums; }
+#polys { width: 100%; border-collapse: collapse; }
+#polys td { padding: 3px 0; border-bottom: 1px solid #23252a; font-size: 12px; white-space: nowrap; }
+#polys td:first-child { position: relative; padding-bottom: 5px; }
+#polys td:first-child i { position: absolute; left: 0; bottom: 1px; height: 2px; background: #6c82c9; border-radius: 1px; }
+#polys td:not(:first-child) { text-align: right; padding-left: 8px; color: #cfd3d8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#polys tr.head td { color: #7d838c; font-size: 11px; }
+#polys tr.total td { font-weight: 600; color: #e6e6e6; }
 
 .thumbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 #refs { grid-template-columns: repeat(4, minmax(0, 1fr)); }

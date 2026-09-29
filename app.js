@@ -261,6 +261,7 @@ async function loadModel(entry) {
   normalize();
   applyMode(mode);
   fillStats(gltf, entry);
+  fillPolys(gltf);
   fillTextures();
   fillRefs(entry);
   editOnLoad(gltf.scene);
@@ -340,6 +341,35 @@ function fillStats(gltf, entry) {
     ['Источник', entry.source || '—'],
   ];
   $('#stats').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+}
+
+// Triangles / vertices of the whole model and of every part (the GLB's top-level nodes, as in the edit mode).
+function meshCounts(obj) {
+  let tris = 0, verts = 0;
+  obj.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry;
+    verts += g.attributes.position.count;
+    tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+  });
+  return { tris: Math.round(tris), verts };
+}
+function fillPolys(gltf) {
+  const fmt = (n) => n.toLocaleString('ru-RU');
+  const total = meshCounts(gltf.scene);
+  // head to toe (by the top of each part), a right / left pair next to each other
+  const parts = gltf.scene.children.map((o) => ({ o, top: new THREE.Box3().setFromObject(o).max.y, ...meshCounts(o) }))
+    .filter((p) => p.tris > 0)
+    .sort((a, b) => (Math.abs(a.top - b.top) > 0.02 ? b.top - a.top : a.o.name.localeCompare(b.o.name)));
+  const row = (name, c, cls = '') => {
+    const pct = total.tris ? (c.tris / total.tris) * 100 : 0;
+    return `<tr class="${cls}"><td>${name}${cls ? '' : `<i style="width:${pct.toFixed(1)}%"></i>`}</td><td>${fmt(c.tris)}</td>` +
+           `<td>${fmt(c.verts)}</td><td>${cls ? '100' : pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</td></tr>`;
+  };
+  $('#polys').innerHTML = '<tr class="head"><td>Часть</td><td>Треуг.</td><td>Верш.</td><td>Доля</td></tr>' +
+    row('Вся модель', total, 'total') + (parts.length > 1 ? parts.map((p) => row(partLabel(p.o), p)).join('') : '');
+  $('#polys-hint').textContent = parts.length > 1 ? `Частей: ${parts.length}. Треугольники — как их считает движок (квад = 2 треугольника).`
+    : 'Модель из одной части. Треугольники — как их считает движок (квад = 2 треугольника).';
 }
 
 const TEX_NAMES = { map: 'BaseColor', normalMap: 'Normal', roughnessMap: 'Metal/Rough', metalnessMap: 'Metal/Rough', aoMap: 'AO', emissiveMap: 'Emissive' };
@@ -536,7 +566,8 @@ const editBox = new THREE.Box3Helper(new THREE.Box3(), 0xffc24d);
 editBox.visible = false;
 scene.add(editBox);
 const edit = { on: false, parts: [], sel: null, dirty: false };
-const PART_NAMES = { Orc_Base: 'Тело + голова' };
+const PART_NAMES = { Orc_Base: 'Тело + голова', Skirt_T: 'Юбка' };
+const GEAR_NAMES = { Pauldron: 'Наплечник', Bracer: 'Наруч', Boot: 'Ботинок' };
 const SIDE = { R: 'правый', L: 'левый' };
 function partLabel(o) {
   if (PART_NAMES[o.name]) return PART_NAMES[o.name];
@@ -546,6 +577,8 @@ function partLabel(o) {
   if (m) return `Ботинок ${m[1]} ${SIDE[m[2]]}`;
   m = /^Bracer_(\d+)_([RL])$/.exec(o.name);
   if (m) return `Наруч ${m[1]} ${SIDE[m[2]]}`;
+  m = /^(Pauldron|Bracer|Boot)_T_([RL])$/.exec(o.name);        // gear cut out of the Tripo models
+  if (m) return `${GEAR_NAMES[m[1]]} ${SIDE[m[2]]}`;
   return o.name || 'Деталь';
 }
 // left/right pairs (<name>_R / <name>_L, mirror images across x = 0): editing one moves the other mirrored
