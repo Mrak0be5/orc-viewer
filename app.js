@@ -343,16 +343,38 @@ function fillStats(gltf, entry) {
   $('#stats').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
 }
 
-// Triangles / vertices of the whole model and of every part (the GLB's top-level nodes, as in the edit mode).
+// Polycount of the whole model and of every part (the GLB's top-level nodes, as in the edit mode), a quad = 1 polygon:
+// exact counts from Blender when the export wrote them into the node extras (poly_faces / poly_quads / poly_tris),
+// else the quads are paired back from the triangles (Blender writes a quad as two consecutive triangles).
+function pairQuads(g) {
+  const idx = g.index && g.index.array;
+  const n = idx ? idx.length / 3 : g.attributes.position.count / 3;
+  if (!idx) return { quads: 0, lone: n };
+  let quads = 0, lone = 0;
+  for (let t = 0; t < n;) {
+    const A = [idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]];
+    const shared = t + 1 < n ? [idx[t * 3 + 3], idx[t * 3 + 4], idx[t * 3 + 5]].filter((v) => A.includes(v)).length : 0;
+    if (shared === 2) { quads++; t += 2; } else { lone++; t += 1; }
+  }
+  return { quads, lone };
+}
 function meshCounts(obj) {
-  let tris = 0, verts = 0;
+  let tris = 0, verts = 0, quads = 0, lone = 0, faces = 0, xq = 0, xt = 0;
   obj.traverse((o) => {
     if (!o.isMesh) return;
     const g = o.geometry;
     verts += g.attributes.position.count;
     tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    const q = pairQuads(g);
+    quads += q.quads; lone += q.lone;
   });
-  return { tris: Math.round(tris), verts };
+  const nodes = [];
+  obj.traverse((o) => { if (Number.isFinite(o.userData?.poly_faces)) nodes.push(o); });
+  if (nodes.length) {
+    for (const o of nodes) { faces += o.userData.poly_faces; xq += o.userData.poly_quads; xt += o.userData.poly_tris; }
+    return { tris: Math.round(tris), verts, polys: faces, quads: xq, lone: xt, exact: true };
+  }
+  return { tris: Math.round(tris), verts, polys: quads + lone, quads, lone, exact: false };
 }
 function fillPolys(gltf) {
   const fmt = (n) => n.toLocaleString('ru-RU');
@@ -362,14 +384,15 @@ function fillPolys(gltf) {
     .filter((p) => p.tris > 0)
     .sort((a, b) => (Math.abs(a.top - b.top) > 0.02 ? b.top - a.top : a.o.name.localeCompare(b.o.name)));
   const row = (name, c, cls = '') => {
-    const pct = total.tris ? (c.tris / total.tris) * 100 : 0;
-    return `<tr class="${cls}"><td>${name}${cls ? '' : `<i style="width:${pct.toFixed(1)}%"></i>`}</td><td>${fmt(c.tris)}</td>` +
-           `<td>${fmt(c.verts)}</td><td>${cls ? '100' : pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</td></tr>`;
+    const pct = total.polys ? (c.polys / total.polys) * 100 : 0;
+    return `<tr class="${cls}"><td>${name}${cls ? '' : `<i style="width:${pct.toFixed(1)}%"></i>`}</td><td>${fmt(c.polys)}</td>` +
+           `<td>${fmt(c.quads)}</td><td>${cls ? '100' : pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</td></tr>`;
   };
-  $('#polys').innerHTML = '<tr class="head"><td>Часть</td><td>Треуг.</td><td>Верш.</td><td>Доля</td></tr>' +
+  $('#polys').innerHTML = '<tr class="head"><td>Часть</td><td>Полиг.</td><td>Квады</td><td>Доля</td></tr>' +
     row('Вся модель', total, 'total') + (parts.length > 1 ? parts.map((p) => row(partLabel(p.o), p)).join('') : '');
-  $('#polys-hint').textContent = parts.length > 1 ? `Частей: ${parts.length}. Треугольники — как их считает движок (квад = 2 треугольника).`
-    : 'Модель из одной части. Треугольники — как их считает движок (квад = 2 треугольника).';
+  const how = total.exact ? 'точные числа граней из Blender' : 'квады собраны из пар треугольников, ±несколько %';
+  $('#polys-hint').textContent = `${parts.length > 1 ? `Частей: ${parts.length}. ` : 'Модель из одной части. '}Полигоны: квад = 1 (${how}); ` +
+    `остальное — треугольники: ${fmt(total.lone)}. В движке ${fmt(total.tris)} треуг. — в «Статистике».`;
 }
 
 const TEX_NAMES = { map: 'BaseColor', normalMap: 'Normal', roughnessMap: 'Metal/Rough', metalnessMap: 'Metal/Rough', aoMap: 'AO', emissiveMap: 'Emissive' };
