@@ -703,6 +703,36 @@
           }
         ]
       }
+    },
+    {
+      "id": "baine-body",
+      "part": "Байн · Тело",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K",
+      "polys": "12.9k граней · 9.7k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь BODY. 12 853 граней (9 657 квадов + 3 196 треугольников, квадов 75.1%), лимит 10 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Сетка и текстура как из Tripo, без правок.",
+      "source": "Tripo 154088da",
+      "yaw": 0,
+      "height": 2.3,
+      "quads": true,
+      "parts": [
+        "models/baine-body.glb"
+      ],
+      "bytes": 8403800,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 10 500 → Smart UV → Texture 8K",
+        "task": "154088da",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-body-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-body-back.jpg"
+          }
+        ]
+      }
     }
   ]
 }
