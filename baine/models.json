@@ -3,11 +3,11 @@
     {
       "id": "baine-full",
       "part": "Байн · Сборка",
-      "label": "Полная сборка: тело, голова, волосы, рога, нагрудник, наплечники, перчатки",
-      "polys": "≈78.7k граней",
+      "label": "Полная сборка: тело, голова, волосы, рога, нагрудник, наплечники, перчатки, пояс",
+      "polys": "≈83.3k граней",
       "date": "2026-10-03",
       "note": "Полная сборка Байн: каждая деталь — отдельный GLB из models.json, поставленный в пространство тела (м, Y вверх, лицом к +Z; rot в градусах XYZ). Посадка подобрана рендерами в Blender (asm/assemble.py). Голова — отдельная деталь; пока она включена, голова тела выше 1,95 м скрыта (поле cut). Детали включаются и выключаются в «Детали сборки»; посадку можно поправить в «✎ Редактировать» и сохранить.",
-      "source": "Tripo, 4367fabf, 6e1ea8a0, 107ce37e, d13bfe60, 8138d628, 88d2f657, 728acec6",
+      "source": "Tripo, 4367fabf, 6e1ea8a0, 107ce37e, d13bfe60, 8138d628, 88d2f657, 728acec6, 3ffa4d84",
       "yaw": 0,
       "height": 2.3,
       "quads": true,
@@ -15,7 +15,7 @@
         "top": 0.12,
         "span": 0.36
       },
-      "bytes": 33462948,
+      "bytes": 38331644,
       "assembly": [
         {
           "id": "baine-body",
@@ -129,10 +129,26 @@
           "scale": 1.0,
           "mirror": true,
           "group": "Перчатки"
+        },
+        {
+          "id": "baine-belt",
+          "name": "Belt",
+          "label": "Пояс",
+          "pos": [
+            0,
+            1.03,
+            -0.0162
+          ],
+          "rot": [
+            2.47,
+            0,
+            0
+          ],
+          "scale": 1.0171
         }
       ],
       "tripo": {
-        "settings": "7 деталей из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
+        "settings": "8 деталей из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
         "inputs": [
           {
             "slot": "Тело · Спереди",
@@ -201,6 +217,14 @@
           {
             "slot": "Перчатки · Сзади",
             "src": "../refs/baine-glove-back.jpg"
+          },
+          {
+            "slot": "Пояс · Спереди",
+            "src": "../refs/baine-belt-front.jpg"
+          },
+          {
+            "slot": "Пояс · Сзади",
+            "src": "../refs/baine-belt-back.jpg"
           }
         ]
       }
@@ -521,6 +545,55 @@
       },
       "raw": {
         "src": "../models/baine-head-tripo.glb",
+        "offset": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "baine-belt",
+      "part": "Байн · Пояс",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
+      "polys": "4.6k граней · 3.3k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь BELT. 4 601 граней (3 338 квадов + 1 263 треугольников, квадов 72.5%), лимит 4 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Пояс: ремень с пряжкой, клыки, перья и бусы; виды спереди и сзади (проект 3ffa4d84, лимит 4 000 → 4 601 face, 72,5% квадов). В «Сборке» сжат по глубине до 0,7 и радиально посажен на талию по секторам (зазор 0,6 см), ремень и подвески смещены вместе; «Как из Tripo» показывает исходную форму. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.79 мм).",
+      "source": "Tripo 3ffa4d84",
+      "yaw": 0,
+      "height": 0.5,
+      "quads": true,
+      "parts": [
+        "../models/baine-belt-hq.glb"
+      ],
+      "bytes": 4868696,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 4 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "3ffa4d84",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "../refs/baine-belt-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "../refs/baine-belt-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-belt-height.webp",
+        "mm": 0.786
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-belt-lite.glb"
+        ],
+        "bytes": 1307776,
+        "heightSrc": "../models/baine-belt-height-lite.webp"
+      },
+      "raw": {
+        "src": "../models/baine-belt-tripo.glb",
         "offset": [
           0,
           0,

@@ -1026,6 +1026,55 @@
           0
         ]
       }
+    },
+    {
+      "id": "baine-belt",
+      "part": "Байн · Пояс",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
+      "polys": "4.6k граней · 3.3k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь BELT. 4 601 граней (3 338 квадов + 1 263 треугольников, квадов 72.5%), лимит 4 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Пояс: ремень с пряжкой, клыки, перья и бусы; виды спереди и сзади (проект 3ffa4d84, лимит 4 000 → 4 601 face, 72,5% квадов). В «Сборке» сжат по глубине до 0,7 и радиально посажен на талию по секторам (зазор 0,6 см), ремень и подвески смещены вместе; «Как из Tripo» показывает исходную форму. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.79 мм).",
+      "source": "Tripo 3ffa4d84",
+      "yaw": 0,
+      "height": 0.5,
+      "quads": true,
+      "parts": [
+        "models/baine-belt-hq.glb"
+      ],
+      "bytes": 4868696,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 4 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "3ffa4d84",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-belt-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-belt-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "models/baine-belt-height.webp",
+        "mm": 0.786
+      },
+      "preview": {
+        "parts": [
+          "models/baine-belt-lite.glb"
+        ],
+        "bytes": 1307776,
+        "heightSrc": "models/baine-belt-height-lite.webp"
+      },
+      "raw": {
+        "src": "models/baine-belt-tripo.glb",
+        "offset": [
+          0,
+          0,
+          0
+        ]
+      }
     }
   ]
 }
