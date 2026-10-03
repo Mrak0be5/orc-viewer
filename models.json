@@ -705,36 +705,6 @@
       }
     },
     {
-      "id": "baine-body",
-      "part": "Байн · Тело",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K",
-      "polys": "13.1k граней · 9.3k квадов",
-      "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь BODY. 13 078 граней (9 288 квадов + 3 790 треугольников, квадов 71.0%), лимит 10 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Хвост-шип и культя хвоста удалены в Blender, исправленная сетка загружена обратно в Tripo и перепечена текстурой 8K (мультивью спереди+сзади, Use Original UV, проект 3d282d6b). Хвост будет отдельной деталью TAIL.",
-      "source": "Tripo 3d282d6b",
-      "yaw": 0,
-      "height": 2.3,
-      "quads": true,
-      "parts": [
-        "models/baine-body.glb"
-      ],
-      "bytes": 8328904,
-      "tripo": {
-        "settings": "Smart Mesh P2.0, мультивью, квады, 10 500 → Smart UV → Texture 8K",
-        "task": "3d282d6b",
-        "inputs": [
-          {
-            "slot": "Спереди",
-            "src": "refs/baine-body-front.jpg"
-          },
-          {
-            "slot": "Сзади",
-            "src": "refs/baine-body-back.jpg"
-          }
-        ]
-      }
-    },
-    {
       "id": "baine-hair",
       "part": "Байн · Волосы",
       "label": "Tripo Smart Mesh P2.0 + текстура 8K",
@@ -764,6 +734,40 @@
           {
             "slot": "Сзади",
             "src": "refs/baine-hair-back.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "baine-body",
+      "part": "Байн · Тело",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K",
+      "polys": "13.1k граней · 8.9k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь BODY. 13 145 граней (8 942 квадов + 4 203 треугольников, квадов 68.0%), лимит 10 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). v5: Smart Mesh по 3 ракурсам (фронт, справа — новый реф ChatGPT Image 2.5, спина), без хвоста, Smart UV + текстура 8K",
+      "source": "Tripo eec5394c",
+      "yaw": 0,
+      "height": 2.3,
+      "quads": true,
+      "parts": [
+        "models/baine-body.glb"
+      ],
+      "bytes": 8044356,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 10 500 → Smart UV → Texture 8K",
+        "task": "eec5394c",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-body-front.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "refs/baine-body-right.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-body-back.jpg"
           }
         ]
       }
