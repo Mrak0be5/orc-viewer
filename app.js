@@ -310,7 +310,7 @@ let manifest = { models: [] };
 let current = null;
 let rawBox = new THREE.Box3();
 
-async function fetchParts(parts, total, base = 0) {
+async function fetchParts(parts, onBytes) {
   const bufs = [];
   let got = 0;
   for (const url of parts) {
@@ -322,7 +322,7 @@ async function fetchParts(parts, total, base = 0) {
       if (done) break;
       bufs.push(value);
       got += value.length;
-      setProgress(total ? (base + got) / total : 0, `Загрузка ${((base + got) / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} МБ`);
+      onBytes(value.length);
     }
   }
   const out = new Uint8Array(got);
@@ -336,25 +336,50 @@ function setProgress(f, text) {
   $('#bar i').style.width = `${Math.round(f * 100)}%`;
   $('#loading-text').textContent = text;
 }
+const mb = (n) => (n / 1048576).toFixed(1);
+// small non-blocking badge while the full-resolution textures stream in behind the preview
+function setHqBadge(text) {
+  let b = $('#hq-badge');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'hq-badge';
+    b.style.cssText = 'position:absolute;left:50%;bottom:14px;transform:translateX(-50%);padding:5px 12px;border-radius:12px;background:rgba(0,0,0,.6);color:#ddd;font:12px system-ui,sans-serif;pointer-events:none;z-index:5';
+    $('#view').append(b);
+  }
+  b.hidden = !text;
+  b.textContent = text || '';
+}
 
 // An entry is one GLB (entry.parts) or an assembly: entry.assembly = [{ id, name, label, pos, rot, scale, mirror }], every item
 // another entry of models.json placed in the body's space (metres, Y up, facing +Z; rot in degrees, XYZ; mirror reflects across x = 0).
+// entry.preview = { parts, bytes, heightSrc } is a light copy (2K textures) shown first; the full textures replace it in the background.
 const byId = (id) => manifest.models.find((m) => m.id === id);
-async function loadSource(e, total, base) {
-  let heightTex = null;
-  if (e.heightMap) {
-    heightTex = await new THREE.TextureLoader().loadAsync(e.heightMap.src);
-    heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true;
-  }
-  const buffer = await fetchParts(e.parts, total, base);
+const PREVIEW_MAPS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'];
+let loadToken = 0;
+let bufCache = new Map(), texCache = new Map();   // per loadModel: mirrored pairs download one file once
+const cached = (cache, key, make) => { if (!cache.has(key)) cache.set(key, make()); return cache.get(key); };
+const loadHeight = (src) => cached(texCache, src, async () => {
+  const t = await new THREE.TextureLoader().loadAsync(src);
+  t.flipY = false; t.colorSpace = THREE.NoColorSpace; t.needsUpdate = true;
+  return t;
+});
+const srcBytes = (e) => (e.preview ? e.preview.bytes : e.bytes);
+async function loadSource(e, onBytes) {
+  const p = e.preview;
+  const heightSrc = e.heightMap && ((p && p.heightSrc) || e.heightMap.src);
+  const heightTex = heightSrc ? await loadHeight(heightSrc) : null;
+  const parts = p ? p.parts : e.parts;
+  const buffer = await cached(bufCache, parts.join('|'), () => fetchParts(parts, onBytes));
   setProgress(1, 'Распаковка…');
   const gltf = await loader.parseAsync(buffer, '');
+  let idx = 0;
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) { m.userData.normalMap = m.normalMap; if (heightTex) { m.userData.heightTex = heightTex; m.userData.heightMm = e.heightMap.mm; } }
     o.userData.orig = o.material;
     o.userData.srcId = e.id;
+    o.userData.srcIdx = idx++;
     if (e.quads) {
       const q = quadLines(o);
       if (q) { q.visible = false; o.add(q); o.userData.quadLines = q; }
@@ -363,24 +388,39 @@ async function loadSource(e, total, base) {
   });
   return gltf.scene;
 }
+function liveTextures() {
+  const s = new Set();
+  for (const o of meshes) for (const m of [].concat(o.userData.orig)) {
+    for (const k of PREVIEW_MAPS) if (m[k]) s.add(m[k]);
+    if (m.userData.normalMap) s.add(m.userData.normalMap);
+    if (m.userData.heightTex) s.add(m.userData.heightTex);
+  }
+  return s;
+}
 async function loadModel(entry) {
+  const token = ++loadToken;
   current = entry;
   $('#model-title').textContent = `${entry.part || ''} · ${entry.label || entry.title}`;
   $('#model-note').textContent = entry.note || '';
   markNav();
   history.replaceState(null, '', `?m=${entry.id}`);
-  for (const o of meshes) for (const m of [].concat(o.userData.orig)) if (m.userData.heightTex) m.userData.heightTex.dispose();
+  setHqBadge('');
+  for (const t of liveTextures()) t.dispose();
+  for (const m of modeCache.values()) m.dispose();
   root.clear(); meshes.length = 0; modeCache.clear();
+  bufCache = new Map(); texCache = new Map();
+  const items = entry.assembly ? entry.assembly.map((a) => ({ a, e: byId(a.id) })).filter((x) => x.e) : [{ a: null, e: entry }];
+  const uniq = [...new Map(items.map((x) => [x.e.id, x.e])).values()];
+  const total = uniq.reduce((n, e) => n + srcBytes(e), 0);
+  let got = 0;
+  const onBytes = (n) => { got += n; setProgress(total ? got / total : 0, `Загрузка ${mb(got)} / ${mb(total)} МБ`); };
   let gscene;
   if (entry.assembly) {
-    const items = entry.assembly.map((a) => ({ a, e: byId(a.id) })).filter((x) => x.e);
-    const total = items.reduce((n, x) => n + x.e.bytes, 0);
     gscene = new THREE.Group();
-    let base = 0;
     for (const { a, e } of items) {
       const part = new THREE.Group();
-      part.add(await loadSource(e, total, base));
-      base += e.bytes;
+      part.add(await loadSource(e, onBytes));
+      if (token !== loadToken) return;
       part.name = a.name || e.id;
       part.userData.label = a.label || e.part;
       part.position.fromArray(a.pos || [0, 0, 0]);
@@ -395,7 +435,11 @@ async function loadModel(entry) {
       part.visible = !a.hidden;
       gscene.add(part);
     }
-  } else gscene = await loadSource(entry, entry.bytes, 0);
+  } else {
+    gscene = await loadSource(entry, onBytes);
+    if (token !== loadToken) return;
+  }
+  bufCache = new Map();
   const gltf = { scene: gscene };
   // Tripo exports face +X; entry.yaw turns the model to face +Z (the viewer's "front").
   const model = new THREE.Group();
@@ -414,6 +458,50 @@ async function loadModel(entry) {
   fillAssembly(gscene);
   setCamera('front');
   $('#loading').hidden = true;
+  const full = uniq.filter((e) => e.preview);
+  if (full.length) upgradeTextures(full, token).catch((err) => { console.error(err); setHqBadge(''); });
+}
+// Swap the preview textures for the full ones. The full GLB has the same meshes in the same order, only the images differ,
+// so mesh n of a source gets the maps of mesh n of its full file; mirrored copies share them.
+async function upgradeTextures(entries, token) {
+  const total = entries.reduce((n, e) => n + e.bytes, 0);
+  let got = 0;
+  const badge = () => setHqBadge(`Полные текстуры 8K: ${mb(got)} / ${mb(total)} МБ`);
+  badge();
+  for (const e of entries) {
+    const buffer = await fetchParts(e.parts, (n) => { got += n; if (token === loadToken) badge(); });
+    if (token !== loadToken) return;
+    const gltf = await loader.parseAsync(buffer, '');
+    const heightTex = e.heightMap ? await new THREE.TextureLoader().loadAsync(e.heightMap.src) : null;
+    const full = [];
+    gltf.scene.traverse((o) => { if (o.isMesh) { full.push([].concat(o.material)); o.geometry.dispose(); } });
+    if (token !== loadToken) {
+      for (const ms of full) for (const m of ms) { for (const k of PREVIEW_MAPS) m[k]?.dispose(); m.dispose(); }
+      heightTex?.dispose();
+      return;
+    }
+    if (heightTex) { heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true; }
+    const old = new Set();
+    for (const o of meshes) {
+      if (o.userData.srcId !== e.id) continue;
+      const src = full[o.userData.srcIdx];
+      if (!src) continue;
+      [].concat(o.userData.orig).forEach((m, i) => {
+        const f = src[i];
+        if (!f) return;
+        for (const k of PREVIEW_MAPS) if (m[k] && f[k]) { old.add(m[k]); m[k] = f[k]; }
+        if (m.userData.normalMap && f.normalMap) { old.add(m.userData.normalMap); m.userData.normalMap = f.normalMap; }
+        if (heightTex && m.userData.heightTex) { old.add(m.userData.heightTex); m.userData.heightTex = heightTex; }
+      });
+    }
+    for (const ms of full) for (const m of ms) m.dispose();
+    for (const m of modeCache.values()) m.dispose();
+    modeCache.clear();
+    applyMode(mode);
+    for (const t of old) t.dispose();
+    fillTextures();
+  }
+  if (token === loadToken) setHqBadge('');
 }
 // three r170 builds the bitangent as cross(normal, tangent) * tangent.w after the model transform, and a reflection turns
 // that cross product around: a mirrored part with glTF tangents would get its normal map's green channel inverted.
@@ -1065,7 +1153,7 @@ window.viewer = {
   },
   mode: (id) => applyMode(id),
   camera: (name) => setCamera(name),
-  state: () => ({ model: current && current.id, mode, meshes: meshes.length, loading: !$('#loading').hidden, text: $('#loading-text').textContent }),
+  state: () => ({ model: current && current.id, mode, meshes: meshes.length, loading: !$('#loading').hidden, text: $('#loading-text').textContent, hq: $('#hq-badge')?.hidden === false ? $('#hq-badge').textContent : '' }),
 };
 
 // ---------- start ----------

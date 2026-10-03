@@ -15,7 +15,7 @@
         "top": 0.12,
         "span": 0.36
       },
-      "bytes": 312725340,
+      "bytes": 53680384,
       "assembly": [
         {
           "id": "baine-body",
@@ -190,9 +190,9 @@
       "height": 2.3,
       "quads": true,
       "parts": [
-        "../models/baine-body.glb"
+        "../models/baine-body-hq.glb"
       ],
-      "bytes": 56053848,
+      "bytes": 11173432,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 20 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → Upscale Enhance 8K; normal+DeepBump, AO, height — локально",
         "task": "4367fabf",
@@ -212,8 +212,15 @@
         ]
       },
       "heightMap": {
-        "src": "../models/baine-body-height.png",
+        "src": "../models/baine-body-height.webp",
         "mm": 1.5287
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-body-lite.glb"
+        ],
+        "bytes": 2554876,
+        "heightSrc": "../models/baine-body-height-lite.webp"
       }
     },
     {
@@ -228,9 +235,9 @@
       "height": 0.37,
       "quads": true,
       "parts": [
-        "../models/baine-horns.glb"
+        "../models/baine-horns-hq.glb"
       ],
-      "bytes": 41638456,
+      "bytes": 6786448,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 1 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "d13bfe60",
@@ -246,8 +253,15 @@
         ]
       },
       "heightMap": {
-        "src": "../models/baine-horns-height.png",
+        "src": "../models/baine-horns-height.webp",
         "mm": 0.4985
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-horns-lite.glb"
+        ],
+        "bytes": 721484,
+        "heightSrc": "../models/baine-horns-height-lite.webp"
       }
     },
     {
@@ -262,9 +276,9 @@
       "height": 0.85,
       "quads": true,
       "parts": [
-        "../models/baine-hair.glb"
+        "../models/baine-hair-hq.glb"
       ],
-      "bytes": 57329172,
+      "bytes": 10240248,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 7 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "107ce37e",
@@ -284,8 +298,15 @@
         ]
       },
       "heightMap": {
-        "src": "../models/baine-hair-height.png",
+        "src": "../models/baine-hair-height.webp",
         "mm": 0.6461
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-hair-lite.glb"
+        ],
+        "bytes": 1721920,
+        "heightSrc": "../models/baine-hair-height-lite.webp"
       }
     },
     {
@@ -300,9 +321,9 @@
       "height": 0.45,
       "quads": true,
       "parts": [
-        "../models/baine-shoulder.glb"
+        "../models/baine-shoulder-hq.glb"
       ],
-      "bytes": 50302728,
+      "bytes": 7868184,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 3 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "88d2f657",
@@ -318,8 +339,15 @@
         ]
       },
       "heightMap": {
-        "src": "../models/baine-shoulder-height.png",
+        "src": "../models/baine-shoulder-height.webp",
         "mm": 0.4471
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-shoulder-lite.glb"
+        ],
+        "bytes": 1022420,
+        "heightSrc": "../models/baine-shoulder-height-lite.webp"
       }
     },
     {
@@ -334,9 +362,9 @@
       "height": 0.62,
       "quads": true,
       "parts": [
-        "../models/baine-chest.glb"
+        "../models/baine-chest-hq.glb"
       ],
-      "bytes": 57749028,
+      "bytes": 9866332,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 8 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "8138d628",
@@ -352,8 +380,15 @@
         ]
       },
       "heightMap": {
-        "src": "../models/baine-chest-height.png",
+        "src": "../models/baine-chest-height.webp",
         "mm": 0.4594
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-chest-lite.glb"
+        ],
+        "bytes": 1510588,
+        "heightSrc": "../models/baine-chest-height-lite.webp"
       }
     },
     {
@@ -368,9 +403,9 @@
       "height": 0.532,
       "quads": true,
       "parts": [
-        "../models/baine-glove.glb"
+        "../models/baine-glove-hq.glb"
       ],
-      "bytes": 49652108,
+      "bytes": 7745740,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 2 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "728acec6",
@@ -386,8 +421,15 @@
         ]
       },
       "heightMap": {
-        "src": "../models/baine-glove-height.png",
+        "src": "../models/baine-glove-height.webp",
         "mm": 0.6782699999999999
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-glove-lite.glb"
+        ],
+        "bytes": 1048088,
+        "heightSrc": "../models/baine-glove-height-lite.webp"
       }
     }
   ]
