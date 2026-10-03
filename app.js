@@ -354,6 +354,7 @@ async function loadSource(e, total, base) {
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) { m.userData.normalMap = m.normalMap; if (heightTex) { m.userData.heightTex = heightTex; m.userData.heightMm = e.heightMap.mm; } }
     o.userData.orig = o.material;
+    o.userData.srcId = e.id;
     if (e.quads) {
       const q = quadLines(o);
       if (q) { q.visible = false; o.add(q); o.userData.quadLines = q; }
@@ -388,7 +389,9 @@ async function loadModel(entry) {
       if (a.mirror) {   // left-hand copy of a right-hand part: reflect the placed part across x = 0
         part.updateMatrix();
         MIRROR_X.clone().multiply(part.matrix).decompose(part.position, part.quaternion, part.scale);
+        flipMirroredNormalMaps(part);
       }
+      part.traverse((o) => { if (o.isMesh) Object.assign(o.userData, { partName: part.name, texPart: a.group || part.userData.label }); });
       part.visible = !a.hidden;
       gscene.add(part);
     }
@@ -411,6 +414,14 @@ async function loadModel(entry) {
   fillAssembly(gscene);
   setCamera('front');
   $('#loading').hidden = true;
+}
+// three r170 builds the bitangent as cross(normal, tangent) * tangent.w after the model transform, and a reflection turns
+// that cross product around: a mirrored part with glTF tangents would get its normal map's green channel inverted.
+// Meshes without tangents use screen-space derivatives, which handle the reflection themselves.
+function flipMirroredNormalMaps(part) {
+  part.traverse((o) => {
+    if (o.isMesh && o.geometry.attributes.tangent) for (const m of [].concat(o.material)) m.normalScale.y *= -1;
+  });
 }
 // assembly: one checkbox per part to show / hide it
 function fillAssembly(gscene) {
@@ -556,7 +567,7 @@ function fillPolys(gltf) {
     `остальное — треугольники: ${fmt(total.lone)}. В движке ${fmt(total.tris)} треуг. — в «Статистике».`;
 }
 
-const TEX_NAMES = { map: 'BaseColor', normalMap: 'Normal', roughnessMap: 'Metal/Rough', metalnessMap: 'Metal/Rough', aoMap: 'AO', emissiveMap: 'Emissive' };
+const TEX_NAMES = { map: 'BaseColor', normalMap: 'Normal', aoMap: 'AO', roughnessMap: 'Metal/Rough', metalnessMap: 'Metal/Rough', emissiveMap: 'Emissive' };
 function drawTex(tex, canvas, max) {
   const img = tex.image;
   const w = img.width, h = img.height, k = Math.min(1, max / Math.max(w, h));
@@ -565,25 +576,34 @@ function drawTex(tex, canvas, max) {
   // glTF textures are stored with flipY = false; draw them the way they sit in the file.
   g.drawImage(img, 0, 0, canvas.width, canvas.height);
 }
+// One figure per texture. glTF packs AO, roughness and metalness into one texture, so the names of every slot it fills
+// are joined ("AO + Metal/Rough"). In an assembly captions start with the part, and a part loaded twice (a mirrored
+// pair) is listed once.
 function fillTextures() {
   const box = $('#textures');
   box.innerHTML = '';
-  const seen = new Map();
-  for (const mesh of meshes) for (const m of [].concat(mesh.userData.orig)) {
-    for (const k of Object.keys(TEX_NAMES)) {
-      const t = k === 'normalMap' ? m.userData.normalMap : m[k];
-      if (t && !seen.has(t.uuid)) seen.set(t.uuid, { t, name: TEX_NAMES[k] });
+  const seen = new Map(), firstPart = new Map();
+  for (const mesh of meshes) {
+    const u = mesh.userData;
+    if (!firstPart.has(u.srcId)) firstPart.set(u.srcId, u.partName);
+    if (firstPart.get(u.srcId) !== u.partName) continue;
+    const add = (t, name) => {
+      if (!t) return;
+      if (!seen.has(t.uuid)) seen.set(t.uuid, { t, part: u.texPart, names: new Set() });
+      seen.get(t.uuid).names.add(name);
+    };
+    for (const m of [].concat(u.orig)) {
+      for (const k of Object.keys(TEX_NAMES)) add(k === 'normalMap' ? m.userData.normalMap : m[k], TEX_NAMES[k]);
+      if (m.userData.heightTex) add(m.userData.heightTex, `Height (±${Math.round(m.userData.heightMm * 1000) / 1000} мм)`);
     }
-    const h = m.userData.heightTex;
-    if (h && !seen.has(h.uuid)) seen.set(h.uuid, { t: h, name: `Height (±${m.userData.heightMm} мм)` });
   }
-  for (const { t, name } of seen.values()) {
+  for (const { t, part, names } of seen.values()) {
     const fig = document.createElement('figure');
     const cv = document.createElement('canvas');
     drawTex(t, cv, 256);
     fig.append(cv);
     const cap = document.createElement('figcaption');
-    cap.textContent = `${name} ${t.image.width}×${t.image.height}`;
+    cap.textContent = `${part ? `${part} · ` : ''}${[...names].join(' + ')} ${t.image.width}×${t.image.height}`;
     fig.append(cap);
     fig.onclick = () => openLightbox({ tex: t, caption: cap.textContent });
     box.append(fig);
@@ -651,15 +671,16 @@ function setCamera(name) {
   const box = modelBox();
   if (box.isEmpty()) return;
   const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-  const h = size.y;
-  let target = c.clone(), dir, span = h * 1.16;
+  const h = size.y, aspect = view.clientWidth / view.clientHeight || 1;
+  const fit = (w) => Math.max(h, w / aspect) * 1.16;   // the height and the width across the view (wide parts: horns)
+  let target = c.clone(), dir, span = fit(size.x);
   switch (name) {
     case 'front': dir = new THREE.Vector3(0, 0, 1); break;
     case 'back': dir = new THREE.Vector3(0, 0, -1); break;
-    case 'left': dir = new THREE.Vector3(1, 0, 0); break; // character's left side (model faces +Z)
-    case 'right': dir = new THREE.Vector3(-1, 0, 0); break;
+    case 'left': dir = new THREE.Vector3(1, 0, 0); span = fit(size.z); break; // character's left side (model faces +Z)
+    case 'right': dir = new THREE.Vector3(-1, 0, 0); span = fit(size.z); break;
     case 'top': dir = new THREE.Vector3(0, 1, 0.001); span = Math.max(size.x, size.z) * 1.2; break;
-    case 'three': dir = new THREE.Vector3(0.8, 0.25, 1).normalize(); break;
+    case 'three': dir = new THREE.Vector3(0.8, 0.25, 1).normalize(); span = fit(size.x * 0.781 + size.z * 0.625); break;
     case 'face': {
       const f = (current && current.face) || { top: 0.075, span: 0.2 };
       dir = new THREE.Vector3(0.35, 0.05, 1).normalize(); target = new THREE.Vector3(c.x, box.max.y - h * f.top, c.z); span = h * f.span; break;
