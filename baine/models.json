@@ -3,11 +3,11 @@
     {
       "id": "baine-full",
       "part": "Байн · Сборка",
-      "label": "Полная сборка: тело, волосы, рога, нагрудник, наплечники, перчатки",
-      "polys": "≈55.2k граней",
+      "label": "Полная сборка: тело, голова, волосы, рога, нагрудник, наплечники, перчатки",
+      "polys": "≈78.7k граней",
       "date": "2026-10-03",
-      "note": "Полная сборка Байн: каждая деталь — отдельный GLB из models.json, поставленный в пространство тела (м, Y вверх, лицом к +Z; rot в градусах XYZ). Посадка подобрана рендерами в Blender (asm/assemble.py). Детали включаются и выключаются в «Детали сборки»; посадку можно поправить в «✎ Редактировать» и сохранить.",
-      "source": "Tripo, 4367fabf, 107ce37e, d13bfe60, 8138d628, 88d2f657, 728acec6",
+      "note": "Полная сборка Байн: каждая деталь — отдельный GLB из models.json, поставленный в пространство тела (м, Y вверх, лицом к +Z; rot в градусах XYZ). Посадка подобрана рендерами в Blender (asm/assemble.py). Голова — отдельная деталь; пока она включена, голова тела выше 1,95 м скрыта (поле cut). Детали включаются и выключаются в «Детали сборки»; посадку можно поправить в «✎ Редактировать» и сохранить.",
+      "source": "Tripo, 4367fabf, 6e1ea8a0, 107ce37e, d13bfe60, 8138d628, 88d2f657, 728acec6",
       "yaw": 0,
       "height": 2.3,
       "quads": true,
@@ -15,12 +15,27 @@
         "top": 0.12,
         "span": 0.36
       },
-      "bytes": 28880152,
+      "bytes": 33462948,
       "assembly": [
         {
           "id": "baine-body",
           "name": "Body",
           "label": "Тело"
+        },
+        {
+          "id": "baine-head",
+          "name": "Head",
+          "label": "Голова",
+          "pos": [
+            0,
+            1.895,
+            0.04
+          ],
+          "scale": 0.71,
+          "cut": {
+            "part": "Body",
+            "above": 1.95
+          }
         },
         {
           "id": "baine-hair",
@@ -117,7 +132,7 @@
         }
       ],
       "tripo": {
-        "settings": "6 деталей из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
+        "settings": "7 деталей из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
         "inputs": [
           {
             "slot": "Тело · Спереди",
@@ -130,6 +145,18 @@
           {
             "slot": "Тело · Сзади",
             "src": "../refs/baine-body-back.jpg"
+          },
+          {
+            "slot": "Голова · Спереди",
+            "src": "../refs/baine-head-front.jpg"
+          },
+          {
+            "slot": "Голова · Справа",
+            "src": "../refs/baine-head-right.jpg"
+          },
+          {
+            "slot": "Голова · Сзади",
+            "src": "../refs/baine-head-back.jpg"
           },
           {
             "slot": "Волосы · Спереди",
@@ -444,6 +471,59 @@
         "offset": [
           0,
           -0.0342,
+          0
+        ]
+      }
+    },
+    {
+      "id": "baine-head",
+      "part": "Байн · Голова",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
+      "polys": "23.5k граней · 19.3k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь HEAD. 23 458 граней (19 289 квадов + 4 169 треугольников, квадов 82.2%), лимит 20 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Голова с шеей отдельной деталью: морда, глаза, брови, уши; виды спереди, справа, сзади вырезаны из листа тела по шею (проект 6e1ea8a0). В «Сборке» стоит вместо головы тела (масштаб 0,71); низ шеи сужен на 9 см, чтобы край ушёл в тело, «Как из Tripo» показывает шею без сужения. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.67 мм).",
+      "source": "Tripo 6e1ea8a0",
+      "yaw": 0,
+      "height": 0.6,
+      "quads": true,
+      "parts": [
+        "../models/baine-head-hq.glb"
+      ],
+      "bytes": 4582796,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 20 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "6e1ea8a0",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "../refs/baine-head-front.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "../refs/baine-head-right.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "../refs/baine-head-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-head-height.webp",
+        "mm": 0.6697
+      },
+      "preview": {
+        "parts": [
+          "../models/baine-head-lite.glb"
+        ],
+        "bytes": 2072704,
+        "heightSrc": "../models/baine-head-height-lite.webp"
+      },
+      "raw": {
+        "src": "../models/baine-head-tripo.glb",
+        "offset": [
+          0,
+          0,
           0
         ]
       }

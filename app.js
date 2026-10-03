@@ -210,6 +210,7 @@ function setDisplaceGeometry(on) {
     if (on && !denseOf.has(u.baseGeom)) denseOf.set(u.baseGeom, subdivide(subdivide(u.baseGeom)));
     mesh.geometry = on ? denseOf.get(u.baseGeom) : u.baseGeom;
   }
+  syncCuts();
 }
 let mode = 'pbr';
 const meshes = [];
@@ -267,6 +268,7 @@ function applyMode(id) {
     if (b.dataset.mode === 'height' || b.dataset.mode === 'displace') b.disabled = !height;
   }
   $('#disp-box').hidden = !height;
+  syncCuts();
   applyOverlay();
 }
 
@@ -449,6 +451,7 @@ async function loadModel(entry) {
   gscene.rotation.y = THREE.MathUtils.degToRad(entry.yaw || 0);
   model.add(gscene);
   root.add(model);
+  prepareCuts(gscene);
   rawBox = new THREE.Box3().setFromObject(model);
   normalize();
   fillPbrMaps();
@@ -514,6 +517,50 @@ function flipMirroredNormalMaps(part) {
     if (o.isMesh && o.geometry.attributes.tangent) for (const m of [].concat(o.material)) m.normalScale.y *= -1;
   });
 }
+// An assembly item can hide the top of another part under it: cut = { part, above } drops the triangles of part `part`
+// lying fully above y = above (that part's space), e.g. the body's own head under a separate HEAD part. The index is
+// reordered once (kept triangles first, the quad wire likewise) and drawRange switches the cut on and off, so hiding
+// the item brings the old head back. The subdivided displacement copy keeps the order (16 triangles per triangle: two subdivisions).
+let cuts = [];
+function prepareCuts(gscene) {
+  cuts = [];
+  for (const a of current.assembly || []) {
+    const by = a.cut && gscene.children.find((p) => p.name === a.name);
+    const target = by && gscene.children.find((p) => p.name === a.cut.part);
+    if (!target) continue;
+    root.updateMatrixWorld(true);
+    const toPart = target.matrixWorld.clone().invert(), list = [];
+    target.traverse((o) => {
+      if (!o.isMesh || !o.geometry.index) return;
+      const g = o.geometry, idx = g.index.array, P = g.attributes.position, m = toPart.clone().multiply(o.matrixWorld), v = new THREE.Vector3();
+      const up = new Uint8Array(P.count);
+      for (let i = 0; i < P.count; i++) up[i] = v.fromBufferAttribute(P, i).applyMatrix4(m).y > a.cut.above;
+      const split = (arr, k) => {   // groups of k indices: those not fully above first
+        const keep = [], drop = [];
+        for (let t = 0; t < arr.length; t += k) {
+          const grp = arr.subarray(t, t + k);
+          (grp.every((i) => up[i]) ? drop : keep).push(...grp);
+        }
+        arr.set(keep.concat(drop));
+        return keep.length;
+      };
+      const keep = split(idx, 3); g.index.needsUpdate = true;
+      const q = o.userData.quadLines, qkeep = q ? split(q.geometry.index.array, 2) : 0;
+      if (q) q.geometry.index.needsUpdate = true;
+      list.push({ o, keep, qkeep });
+    });
+    cuts.push({ by, list });
+  }
+  syncCuts();
+}
+function syncCuts() {
+  for (const { by, list } of cuts) for (const { o, keep, qkeep } of list) {
+    const on = by.visible, base = o.userData.baseGeom || o.geometry;
+    base.setDrawRange(0, on ? keep : Infinity);
+    denseOf.get(base)?.setDrawRange(0, on ? keep * 16 : Infinity);
+    o.userData.quadLines?.geometry.setDrawRange(0, on ? qkeep : Infinity);
+  }
+}
 // assembly: one checkbox per part to show / hide it
 function fillAssembly(gscene) {
   const box = $('#asm-box');
@@ -525,7 +572,7 @@ function fillAssembly(gscene) {
     const l = document.createElement('label');
     const c = document.createElement('input');
     c.type = 'checkbox'; c.checked = p.visible;
-    c.onchange = () => { p.visible = c.checked; if (!c.checked && edit.sel === p) select(null); };
+    c.onchange = () => { p.visible = c.checked; syncCuts(); if (!c.checked && edit.sel === p) select(null); };
     l.append(c, ` ${partLabel(p)}`);
     $('#asm-parts').append(l);
   }

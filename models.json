@@ -973,6 +973,59 @@
           0
         ]
       }
+    },
+    {
+      "id": "baine-head",
+      "part": "Байн · Голова",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
+      "polys": "23.5k граней · 19.3k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь HEAD. 23 458 граней (19 289 квадов + 4 169 треугольников, квадов 82.2%), лимит 20 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Голова с шеей отдельной деталью: морда, глаза, брови, уши; виды спереди, справа, сзади вырезаны из листа тела по шею (проект 6e1ea8a0). В «Сборке» стоит вместо головы тела (масштаб 0,71); низ шеи сужен на 9 см, чтобы край ушёл в тело, «Как из Tripo» показывает шею без сужения. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.67 мм).",
+      "source": "Tripo 6e1ea8a0",
+      "yaw": 0,
+      "height": 0.6,
+      "quads": true,
+      "parts": [
+        "models/baine-head-hq.glb"
+      ],
+      "bytes": 4582796,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 20 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "6e1ea8a0",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-head-front.jpg"
+          },
+          {
+            "slot": "Справа",
+            "src": "refs/baine-head-right.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-head-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "models/baine-head-height.webp",
+        "mm": 0.6697
+      },
+      "preview": {
+        "parts": [
+          "models/baine-head-lite.glb"
+        ],
+        "bytes": 2072704,
+        "heightSrc": "models/baine-head-height-lite.webp"
+      },
+      "raw": {
+        "src": "models/baine-head-tripo.glb",
+        "offset": [
+          0,
+          0,
+          0
+        ]
+      }
     }
   ]
 }
