@@ -337,8 +337,8 @@ function setProgress(f, text) {
   $('#loading-text').textContent = text;
 }
 
-// An entry is one GLB (entry.parts) or an assembly: entry.assembly = [{ id, name, label, pos, rot, scale }], every item
-// another entry of models.json placed in the body's space (metres, Y up, facing +Z; rot in degrees, XYZ).
+// An entry is one GLB (entry.parts) or an assembly: entry.assembly = [{ id, name, label, pos, rot, scale, mirror }], every item
+// another entry of models.json placed in the body's space (metres, Y up, facing +Z; rot in degrees, XYZ; mirror reflects across x = 0).
 const byId = (id) => manifest.models.find((m) => m.id === id);
 async function loadSource(e, total, base) {
   let heightTex = null;
@@ -385,6 +385,10 @@ async function loadModel(entry) {
       part.position.fromArray(a.pos || [0, 0, 0]);
       part.rotation.set(...(a.rot || [0, 0, 0]).map(THREE.MathUtils.degToRad));
       part.scale.setScalar(a.scale || 1);
+      if (a.mirror) {   // left-hand copy of a right-hand part: reflect the placed part across x = 0
+        part.updateMatrix();
+        MIRROR_X.clone().multiply(part.matrix).decompose(part.position, part.quaternion, part.scale);
+      }
       part.visible = !a.hidden;
       gscene.add(part);
     }

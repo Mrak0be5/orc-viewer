@@ -847,6 +847,40 @@
         "src": "models/baine-hair-height.png",
         "mm": 0.6461
       }
+    },
+    {
+      "id": "baine-shoulder",
+      "part": "Байн · Наплечник",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "polys": "3.3k граней · 2.3k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь SHOULDER. 3 346 граней (2 295 квадов + 1 051 треугольников, квадов 68.6%), лимит 3 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Наплечник: кожаная чаша, бирюзовый камень в золотой оправе, когти и веер красно-синих перьев. Мультивью: спереди, сзади (проект 88d2f657). Правый; левый в «Сборке» — зеркальная копия. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.45 мм).",
+      "source": "Tripo 88d2f657",
+      "yaw": 0,
+      "height": 0.45,
+      "quads": true,
+      "parts": [
+        "models/baine-shoulder.glb"
+      ],
+      "bytes": 50302728,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 3 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "88d2f657",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-shoulder-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-shoulder-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "models/baine-shoulder-height.png",
+        "mm": 0.4471
+      }
     }
   ]
 }
