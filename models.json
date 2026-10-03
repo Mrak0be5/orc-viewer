@@ -733,6 +733,40 @@
           }
         ]
       }
+    },
+    {
+      "id": "baine-hair",
+      "part": "Байн · Волосы",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K",
+      "polys": "8.5k граней · 6.5k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь HAIR. 8 463 граней (6 466 квадов + 1 997 треугольников, квадов 76.4%), лимит 7 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Две косы с медными кольцами и красно-синими перьями. Мультивью: спереди, сбоку, сзади (проект 107ce37e). Масштаб условный (высота 0,85 м), под голову тела подгоню при сборке.",
+      "source": "Tripo 107ce37e",
+      "yaw": 0,
+      "height": 0.85,
+      "quads": true,
+      "parts": [
+        "models/baine-hair.glb"
+      ],
+      "bytes": 6793108,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 7 000 → Smart UV → Texture 8K",
+        "task": "107ce37e",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-hair-front.jpg"
+          },
+          {
+            "slot": "Сбоку",
+            "src": "refs/baine-hair-side.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-hair-back.jpg"
+          }
+        ]
+      }
     }
   ]
 }
