@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Байн — тауренша, детали и сборка</title>
+<link rel="stylesheet" href="../style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="view"></div>
+<nav id="parts"><div id="part-tabs"></div><div id="versions"></div></nav>
+<button id="edit-toggle" title="Выбрать деталь модели, подвинуть / повернуть / увеличить и сохранить">✎ Редактировать</button>
+
+<div id="edit-panel" hidden>
+  <div class="edit-head"><b>Редактирование</b><button id="edit-exit" title="Выйти (правки остаются на экране)">✕</button></div>
+  <p id="edit-sel" class="hint">Кликните по детали модели или выберите её здесь:</p>
+  <div id="edit-parts" class="grid"></div>
+  <div id="edit-tools" class="grid3">
+    <button data-tool="translate">Двигать<kbd>G</kbd></button>
+    <button data-tool="rotate">Вращать<kbd>R</kbd></button>
+    <button data-tool="scale">Масштаб<kbd>S</kbd></button>
+  </div>
+  <div id="edit-fields">
+    <label class="range">Масштаб, % <input type="number" id="edit-scale" step="1" min="1"></label>
+    <div class="xyz">Сдвиг, см
+      <label>X<input type="number" id="edit-x" step="0.5"></label>
+      <label>Y<input type="number" id="edit-y" step="0.5"></label>
+      <label>Z<input type="number" id="edit-z" step="0.5"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="edit-mirror" checked> Пары левый/правый — зеркально</label>
+    <p class="hint">X — вправо, Y — вверх, Z — вперёд (к зрителю на виде спереди). Оси гизмо можно тянуть мышью.</p>
+  </div>
+  <div class="grid">
+    <button id="edit-reset">Сбросить деталь</button>
+    <button id="edit-reset-all">Сбросить всё</button>
+    <button id="edit-save" class="primary" title="Запомнить положение деталей (без скачивания файлов)">Сохранить <kbd>Ctrl+S</kbd></button>
+    <button id="edit-glb" title="Скачать модель с текущими правками">Скачать GLB</button>
+  </div>
+  <p id="edit-status" class="hint"></p>
+</div>
+
+<aside id="panel">
+  <header>
+    <h1>Байн</h1>
+    <p id="model-title"></p>
+    <p id="model-note"></p>
+  </header>
+
+  <section id="asm-box" hidden>
+    <h2>Детали сборки</h2>
+    <div id="asm-parts" class="checks"></div>
+  </section>
+
+  <section>
+    <h2>Полигонаж</h2>
+    <table id="polys"></table>
+    <p id="polys-hint" class="hint"></p>
+  </section>
+
+  <section>
+    <h2>Шейдер <small>клавиши 1–0, Q, W, A, H, D</small></h2>
+    <div id="modes" class="grid"></div>
+  </section>
+
+  <section>
+    <h2>Наложения</h2>
+    <label><input type="checkbox" id="wire-overlay"> Сетка поверх (E)</label>
+    <label><input type="checkbox" id="normal-map-on" checked> Normal map в PBR/глине</label>
+    <label id="disp-box" hidden>Дисплейсмент, усиление <input type="range" id="disp-exag" min="1" max="20" step="1" value="1"> <span id="disp-exag-v">×1</span></label>
+    <label><input type="checkbox" id="scale21" checked> Реальный масштаб (по детали)</label>
+    <label><input type="checkbox" id="ruler" checked> Линейка роста</label>
+    <label><input type="checkbox" id="grid-on" checked> Пол-сетка</label>
+    <label><input type="checkbox" id="autorotate"> Автоповорот (R)</label>
+  </section>
+
+  <section>
+    <h2>Камера</h2>
+    <div class="grid">
+      <button data-cam="front">Спереди</button>
+      <button data-cam="back">Сзади</button>
+      <button data-cam="left">Слева</button>
+      <button data-cam="right">Справа</button>
+      <button data-cam="face">Лицо</button>
+      <button data-cam="top">Сверху</button>
+      <button data-cam="three">3/4</button>
+      <button id="ortho">Орто: выкл</button>
+    </div>
+    <p class="hint">ЛКМ — вращать, ПКМ — сдвиг, колесо — зум, двойной клик — центр на точку.</p>
+  </section>
+
+  <section>
+    <h2>Свет</h2>
+    <label class="range">Окружение <input type="range" id="env" min="0" max="3" step="0.05" value="1"></label>
+    <label class="range">Ключевой свет <input type="range" id="key" min="0" max="5" step="0.05" value="1.5"></label>
+    <label class="range">Поворот света <input type="range" id="rot" min="0" max="360" step="1" value="35"></label>
+    <label class="range">Экспозиция <input type="range" id="exposure" min="0.2" max="3" step="0.05" value="1"></label>
+    <label class="range">Тонмаппинг
+      <select id="tonemap"><option value="neutral">Neutral</option><option value="agx">AgX</option><option value="aces">ACES</option><option value="none">Нет</option></select>
+    </label>
+    <label class="range">Фон
+      <select id="bg"><option value="#26282c">Тёмно-серый</option><option value="#808080">Серый 50%</option><option value="#f2f2f2">Белый</option><option value="#000000">Чёрный</option></select>
+    </label>
+  </section>
+
+  <section>
+    <h2>Статистика</h2>
+    <table id="stats"></table>
+  </section>
+
+  <section>
+    <h2>Текстуры</h2>
+    <div id="textures" class="thumbs"></div>
+  </section>
+
+  <section>
+    <h2>Загружено в Tripo</h2>
+    <p id="tripo-info" class="hint"></p>
+    <div id="refs" class="thumbs"></div>
+  </section>
+
+  <section>
+    <button id="shot" class="wide">Скриншот PNG</button>
+  </section>
+</aside>
+
+<div id="loading"><div id="bar"><i></i></div><span id="loading-text">Загрузка…</span></div>
+<div id="lightbox" hidden><img alt=""><canvas></canvas><span></span></div>
+
+<script type="module" src="../app.js"></script>
+</body>
+</html>

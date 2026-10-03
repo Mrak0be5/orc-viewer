@@ -111,17 +111,18 @@ const MODES = [
   { id: 'uv', key: 'q', label: 'UV-чекер', make: () => new THREE.MeshBasicMaterial({ map: CHECKER, toneMapped: false }) },
   { id: 'facets', key: 'w', label: 'Грани (flat)', make: () => new THREE.MeshStandardMaterial({ color: 0xb8b2aa, roughness: 0.7, flatShading: true }) },
   { id: 'ao', key: 'a', label: 'AO', make: (m) => dataMaterial(m.aoMap, new THREE.Vector4(1, 0, 0, 0), 1) },
-  { id: 'height', key: 'h', label: 'Height', make: () => dataMaterial(heightTex, new THREE.Vector4(1, 0, 0, 0), 0.5) },
+  { id: 'height', key: 'h', label: 'Height', make: (m) => dataMaterial(m.userData.heightTex, new THREE.Vector4(1, 0, 0, 0), 0.5) },
   { id: 'displace', key: 'd', label: 'Дисплейсмент', make: (m) => new THREE.MeshStandardMaterial({
-    color: 0xb8b2aa, roughness: 0.65, metalness: 0, displacementMap: heightTex, ...dispParams(),
+    color: 0xb8b2aa, roughness: 0.65, metalness: 0, displacementMap: m.userData.heightTex || null, ...dispParams(m),
     normalMap: useNormalMap() ? m.userData.normalMap : null, normalScale: m.normalScale ? m.normalScale.clone() : new THREE.Vector2(1, 1) }) },
 ];
-// Height map (entry.heightMap: { src, mm } — zero level 0.5, 1.0 = +mm). Displacement preview runs on a
-// 4× midpoint-subdivided copy of the mesh; the relief is a few millimetres, so it can be exaggerated.
-let heightTex = null;
+// Height map (entry.heightMap: { src, mm } — zero level 0.5, 1.0 = +mm), kept per material (userData.heightTex /
+// heightMm) so an assembly can mix parts with and without one. Displacement preview runs on a 4× midpoint-subdivided
+// copy of the mesh; the relief is a few millimetres, so it can be exaggerated.
+const hasHeight = () => meshes.some((o) => [].concat(o.userData.orig).some((m) => m.userData.heightTex));
 const dispExag = () => +$('#disp-exag').value;
-function dispParams() {
-  const mm = (current && current.heightMap && current.heightMap.mm) || 0, h = mm / 1000 * dispExag();
+function dispParams(m) {
+  const mm = (m && m.userData.heightMm) || 0, h = mm / 1000 * dispExag();
   return { displacementScale: 2 * h, displacementBias: -h };
 }
 function subdivide(g) {
@@ -156,6 +157,7 @@ function subdivide(g) {
 function setDisplaceGeometry(on) {
   for (const mesh of meshes) {
     const u = mesh.userData;
+    if (![].concat(u.orig).some((m) => m.userData.heightTex)) continue;
     if (!u.baseGeom) u.baseGeom = mesh.geometry;
     if (on && !u.denseGeom) u.denseGeom = subdivide(subdivide(u.baseGeom));
     mesh.geometry = on ? u.denseGeom : u.baseGeom;
@@ -200,7 +202,8 @@ function quadLines(mesh) {
 }
 
 function applyMode(id) {
-  if ((id === 'height' || id === 'displace') && !heightTex) id = 'pbr';
+  const height = hasHeight();
+  if ((id === 'height' || id === 'displace') && !height) id = 'pbr';
   mode = id;
   setDisplaceGeometry(id === 'displace');
   for (const mesh of meshes) {
@@ -208,14 +211,14 @@ function applyMode(id) {
     if (id === 'pbr') { mesh.material = MODES[0].make(orig); continue; }
     if (id === 'wire' && mesh.userData.quadLines) { mesh.material = wireBaseMat; continue; }
     const k = mesh.uuid + id + useNormalMap();
-    if (!modeCache.has(k)) modeCache.set(k, MODES.find((m) => m.id === id).make(orig));
+    if (!modeCache.has(k)) { const made = MODES.find((m) => m.id === id).make(orig); made.userData.src = orig; modeCache.set(k, made); }
     mesh.material = modeCache.get(k);
   }
   for (const b of document.querySelectorAll('#modes button')) {
     b.classList.toggle('on', b.dataset.mode === id);
-    if (b.dataset.mode === 'height' || b.dataset.mode === 'displace') b.disabled = !heightTex;
+    if (b.dataset.mode === 'height' || b.dataset.mode === 'displace') b.disabled = !height;
   }
-  $('#disp-box').hidden = !heightTex;
+  $('#disp-box').hidden = !height;
   applyOverlay();
 }
 
@@ -260,7 +263,7 @@ let manifest = { models: [] };
 let current = null;
 let rawBox = new THREE.Box3();
 
-async function fetchParts(parts, total) {
+async function fetchParts(parts, total, base = 0) {
   const bufs = [];
   let got = 0;
   for (const url of parts) {
@@ -272,7 +275,7 @@ async function fetchParts(parts, total) {
       if (done) break;
       bufs.push(value);
       got += value.length;
-      setProgress(total ? got / total : 0, `Загрузка ${(got / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} МБ`);
+      setProgress(total ? (base + got) / total : 0, `Загрузка ${((base + got) / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} МБ`);
     }
   }
   const out = new Uint8Array(got);
@@ -287,36 +290,63 @@ function setProgress(f, text) {
   $('#loading-text').textContent = text;
 }
 
+// An entry is one GLB (entry.parts) or an assembly: entry.assembly = [{ id, name, label, pos, rot, scale }], every item
+// another entry of models.json placed in the body's space (metres, Y up, facing +Z; rot in degrees, XYZ).
+const byId = (id) => manifest.models.find((m) => m.id === id);
+async function loadSource(e, total, base) {
+  let heightTex = null;
+  if (e.heightMap) {
+    heightTex = await new THREE.TextureLoader().loadAsync(e.heightMap.src);
+    heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true;
+  }
+  const buffer = await fetchParts(e.parts, total, base);
+  setProgress(1, 'Распаковка…');
+  const gltf = await loader.parseAsync(buffer, '');
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) { m.userData.normalMap = m.normalMap; if (heightTex) { m.userData.heightTex = heightTex; m.userData.heightMm = e.heightMap.mm; } }
+    o.userData.orig = o.material;
+    if (e.quads) {
+      const q = quadLines(o);
+      if (q) { q.visible = false; o.add(q); o.userData.quadLines = q; }
+    }
+    meshes.push(o);
+  });
+  return gltf.scene;
+}
 async function loadModel(entry) {
   current = entry;
   $('#model-title').textContent = `${entry.part || ''} · ${entry.label || entry.title}`;
   $('#model-note').textContent = entry.note || '';
   markNav();
   history.replaceState(null, '', `?m=${entry.id}`);
+  for (const o of meshes) for (const m of [].concat(o.userData.orig)) if (m.userData.heightTex) m.userData.heightTex.dispose();
   root.clear(); meshes.length = 0; modeCache.clear();
-  if (heightTex) { heightTex.dispose(); heightTex = null; }
-  if (entry.heightMap) {
-    heightTex = await new THREE.TextureLoader().loadAsync(entry.heightMap.src);
-    heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true;
-  }
-  const buffer = await fetchParts(entry.parts, entry.bytes);
-  setProgress(1, 'Распаковка…');
-  const gltf = await loader.parseAsync(buffer, '');
-  gltf.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    for (const m of mats) m.userData.normalMap = m.normalMap;
-    o.userData.orig = o.material;
-    if (entry.quads) {
-      const q = quadLines(o);
-      if (q) { q.visible = false; o.add(q); o.userData.quadLines = q; }
+  let gscene;
+  if (entry.assembly) {
+    const items = entry.assembly.map((a) => ({ a, e: byId(a.id) })).filter((x) => x.e);
+    const total = items.reduce((n, x) => n + x.e.bytes, 0);
+    gscene = new THREE.Group();
+    let base = 0;
+    for (const { a, e } of items) {
+      const part = new THREE.Group();
+      part.add(await loadSource(e, total, base));
+      base += e.bytes;
+      part.name = a.name || e.id;
+      part.userData.label = a.label || e.part;
+      part.position.fromArray(a.pos || [0, 0, 0]);
+      part.rotation.set(...(a.rot || [0, 0, 0]).map(THREE.MathUtils.degToRad));
+      part.scale.setScalar(a.scale || 1);
+      part.visible = !a.hidden;
+      gscene.add(part);
     }
-    meshes.push(o);
-  });
+  } else gscene = await loadSource(entry, entry.bytes, 0);
+  const gltf = { scene: gscene };
   // Tripo exports face +X; entry.yaw turns the model to face +Z (the viewer's "front").
   const model = new THREE.Group();
-  gltf.scene.rotation.y = THREE.MathUtils.degToRad(entry.yaw || 0);
-  model.add(gltf.scene);
+  gscene.rotation.y = THREE.MathUtils.degToRad(entry.yaw || 0);
+  model.add(gscene);
   root.add(model);
   rawBox = new THREE.Box3().setFromObject(model);
   normalize();
@@ -325,18 +355,36 @@ async function loadModel(entry) {
   fillPolys(gltf);
   fillTextures();
   fillRefs(entry);
-  editOnLoad(gltf.scene);
+  editOnLoad(gscene);
+  fillAssembly(gscene);
   setCamera('front');
   $('#loading').hidden = true;
+}
+// assembly: one checkbox per part to show / hide it
+function fillAssembly(gscene) {
+  const box = $('#asm-box');
+  if (!box) return;
+  box.hidden = !current.assembly;
+  $('#asm-parts').innerHTML = '';
+  if (!current.assembly) return;
+  for (const p of gscene.children) {
+    const l = document.createElement('label');
+    const c = document.createElement('input');
+    c.type = 'checkbox'; c.checked = p.visible;
+    c.onchange = () => { p.visible = c.checked; if (!c.checked && edit.sel === p) select(null); };
+    l.append(c, ` ${partLabel(p)}`);
+    $('#asm-parts').append(l);
+  }
 }
 
 // Center on X/Z, feet at 0, optional scale to 2.10 m.
 function normalize() {
   const size = rawBox.getSize(new THREE.Vector3());
-  const s = $('#scale21').checked && size.y > 0 ? (current.height || TARGET_HEIGHT) / size.y : 1;
+  const s = !current.assembly && $('#scale21').checked && size.y > 0 ? (current.height || TARGET_HEIGHT) / size.y : 1;
   const model = root.children[0];
   if (!model) return;
   model.scale.setScalar(s);
+  if (current.assembly) { model.position.set(0, 0, 0); buildRuler(current.height || size.y, size.x / 2); return; }  // already in the body's space
   const c = rawBox.getCenter(new THREE.Vector3());
   model.position.set(-c.x * s, -rawBox.min.y * s, -c.z * s);
   buildRuler(size.y * s, size.x * s / 2);
@@ -474,8 +522,9 @@ function fillTextures() {
       const t = k === 'normalMap' ? m.userData.normalMap : m[k];
       if (t && !seen.has(t.uuid)) seen.set(t.uuid, { t, name: TEX_NAMES[k] });
     }
+    const h = m.userData.heightTex;
+    if (h && !seen.has(h.uuid)) seen.set(h.uuid, { t: h, name: `Height (±${m.userData.heightMm} мм)` });
   }
-  if (heightTex) seen.set(heightTex.uuid, { t: heightTex, name: `Height (±${current.heightMap.mm} мм)` });
   for (const { t, name } of seen.values()) {
     const fig = document.createElement('figure');
     const cv = document.createElement('canvas');
@@ -593,10 +642,11 @@ $('#ortho').onclick = () => {
 
 // double click: orbit around the clicked point
 const ray = new THREE.Raycaster();
+const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };  // hidden assembly parts can't be hit
 renderer.domElement.addEventListener('dblclick', (e) => {
   const r = renderer.domElement.getBoundingClientRect();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
-  const hit = ray.intersectObjects(meshes, false)[0];
+  const hit = ray.intersectObjects(meshes, false).find((h) => shown(h.object));
   if (!hit) return;
   const shift = hit.point.clone().sub(controls.target);
   controls.target.add(shift);
@@ -609,7 +659,7 @@ $('#wire-overlay').onchange = applyOverlay;
 $('#normal-map-on').onchange = () => applyMode(mode);
 $('#disp-exag').oninput = () => {
   $('#disp-exag-v').textContent = `×${dispExag()}`;
-  for (const m of modeCache.values()) if (m.displacementMap) Object.assign(m, dispParams());
+  for (const [k, m] of modeCache) if (m.displacementMap) Object.assign(m, dispParams(m.userData.src));
 };
 $('#scale21').onchange = () => { normalize(); setCamera('front'); };
 $('#ruler').onchange = (e) => { ruler.visible = e.target.checked; };
@@ -659,6 +709,7 @@ const PART_NAMES = { Orc_Base: 'Тело + голова', Skirt_T: 'Юбка' };
 const GEAR_NAMES = { Pauldron: 'Наплечник', Bracer: 'Наруч', Boot: 'Ботинок' };
 const SIDE = { R: 'правый', L: 'левый' };
 function partLabel(o) {
+  if (o.userData.label) return o.userData.label;
   if (PART_NAMES[o.name]) return PART_NAMES[o.name];
   let m = /^Hair_(\d+)/.exec(o.name);
   if (m) return `Волосы ${m[1]}`;
@@ -885,7 +936,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (!edit.on || !down || down.gizmo || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
   const r = renderer.domElement.getBoundingClientRect();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
-  const hit = ray.intersectObjects(meshes, false)[0];
+  const hit = ray.intersectObjects(meshes, false).find((h) => shown(h.object));
   let p = hit && hit.object;
   while (p && !edit.parts.includes(p)) p = p.parent;
   select(p || null);

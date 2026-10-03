@@ -775,6 +775,36 @@
           }
         ]
       }
+    },
+    {
+      "id": "baine-horns",
+      "part": "Байн · Рога",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR",
+      "polys": "1.5k граней · 1.1k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь HORNS. 1 491 граней (1 108 квадов + 383 треугольников, квадов 74.3%), лимит 1 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Рога на перемычке с бирюзовыми кольцами, бусинами и красно-синими перьями. Мультивью: спереди, сзади (проект d13bfe60). PBR-карты Tripo 4K: normal, roughness, metallic (металл — только кольца). Размах 0,8 м, посажены на голову в «Сборке».",
+      "source": "Tripo d13bfe60",
+      "yaw": 0,
+      "height": 0.37,
+      "quads": true,
+      "parts": [
+        "models/baine-horns.glb"
+      ],
+      "bytes": 7915216,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 1 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic)",
+        "task": "d13bfe60",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "refs/baine-horns-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "refs/baine-horns-back.jpg"
+          }
+        ]
+      }
     }
   ]
 }
