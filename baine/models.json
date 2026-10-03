@@ -15,7 +15,7 @@
         "top": 0.12,
         "span": 0.36
       },
-      "bytes": 53680384,
+      "bytes": 28880152,
       "assembly": [
         {
           "id": "baine-body",
@@ -181,10 +181,10 @@
     {
       "id": "baine-body",
       "part": "Байн · Тело",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
       "polys": "23.9k граней · 17.4k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь BODY. 23 928 граней (17 432 квадов + 6 496 треугольников, квадов 72.9%), лимит 20 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). v7: сетка v6 (20000 квадов, 3 ракурса). Цвет — Tripo Texture Upscale Enhance 8K. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали меха/кожи DeepBump из 8K-альбедо, без шва на морде. ORM PNG 4K: R — AO, запечённый в Cycles из геометрии (256 spp), G — roughness Tripo, B — metallic Tripo с мягким потолком 0.12 (мех слегка отливает металлом). Height из улучшенной нормали (±1.53 мм, ноль 0.5) — режимы Height и Дисплейсмент.",
+      "note": "Тауренша Байн, деталь BODY. 23 928 граней (17 432 квадов + 6 496 треугольников, квадов 72.9%), лимит 20 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). v7: сетка v6 (20000 квадов, 3 ракурса). Цвет — Tripo Texture Upscale Enhance 8K. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали меха/кожи DeepBump из 8K-альбедо, без шва на морде. ORM PNG 4K: R — AO, запечённый в Cycles из геометрии (256 spp), G — roughness Tripo, B — metallic Tripo с мягким потолком 0.12 (мех слегка отливает металлом). Height из улучшенной нормали (±1.53 мм, ноль 0.5) — режимы Height и Дисплейсмент.",
       "source": "Tripo 4367fabf",
       "yaw": 0,
       "height": 2.3,
@@ -192,7 +192,7 @@
       "parts": [
         "../models/baine-body-hq.glb"
       ],
-      "bytes": 11173432,
+      "bytes": 6276384,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 20 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → Upscale Enhance 8K; normal+DeepBump, AO, height — локально",
         "task": "4367fabf",
@@ -226,10 +226,10 @@
     {
       "id": "baine-horns",
       "part": "Байн · Рога",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
       "polys": "1.5k граней · 1.1k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь HORNS. 1 491 граней (1 108 квадов + 383 треугольников, квадов 74.3%), лимит 1 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Рога на перемычке с бирюзовыми кольцами, бусинами и красно-синими перьями. Мультивью: спереди, сзади (проект d13bfe60). Размах 0,8 м, посажены на голову в «Сборке». Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.50 мм).",
+      "note": "Тауренша Байн, деталь HORNS. 1 491 граней (1 108 квадов + 383 треугольников, квадов 74.3%), лимит 1 500. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Рога на перемычке с бирюзовыми кольцами, бусинами и красно-синими перьями. Мультивью: спереди, сзади (проект d13bfe60). Размах 0,8 м, посажены на голову в «Сборке». Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.50 мм).",
       "source": "Tripo d13bfe60",
       "yaw": 0,
       "height": 0.37,
@@ -237,7 +237,7 @@
       "parts": [
         "../models/baine-horns-hq.glb"
       ],
-      "bytes": 6786448,
+      "bytes": 3144304,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 1 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "d13bfe60",
@@ -267,10 +267,10 @@
     {
       "id": "baine-hair",
       "part": "Байн · Волосы",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
       "polys": "8.5k граней · 6.5k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь HAIR. 8 463 граней (6 466 квадов + 1 997 треугольников, квадов 76.4%), лимит 7 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Две косы с медными кольцами и красно-синими перьями. Мультивью: спереди, сбоку, сзади (проект 107ce37e). Посажены на голову в «Сборке». Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.65 мм).",
+      "note": "Тауренша Байн, деталь HAIR. 8 463 граней (6 466 квадов + 1 997 треугольников, квадов 76.4%), лимит 7 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Две косы с медными кольцами и красно-синими перьями. Мультивью: спереди, сбоку, сзади (проект 107ce37e). Посажены на голову в «Сборке». Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.65 мм).",
       "source": "Tripo 107ce37e",
       "yaw": 0,
       "height": 0.85,
@@ -278,7 +278,7 @@
       "parts": [
         "../models/baine-hair-hq.glb"
       ],
-      "bytes": 10240248,
+      "bytes": 6209400,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 7 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "107ce37e",
@@ -312,10 +312,10 @@
     {
       "id": "baine-shoulder",
       "part": "Байн · Наплечник",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
       "polys": "3.3k граней · 2.3k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь SHOULDER. 3 346 граней (2 295 квадов + 1 051 треугольников, квадов 68.6%), лимит 3 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Наплечник: кожаная чаша, бирюзовый камень в золотой оправе, когти и веер красно-синих перьев. Мультивью: спереди, сзади (проект 88d2f657). Правый; левый в «Сборке» — зеркальная копия. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.45 мм).",
+      "note": "Тауренша Байн, деталь SHOULDER. 3 346 граней (2 295 квадов + 1 051 треугольников, квадов 68.6%), лимит 3 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Наплечник: кожаная чаша, бирюзовый камень в золотой оправе, когти и веер красно-синих перьев. Мультивью: спереди, сзади (проект 88d2f657). Правый; левый в «Сборке» — зеркальная копия. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.45 мм).",
       "source": "Tripo 88d2f657",
       "yaw": 0,
       "height": 0.45,
@@ -323,7 +323,7 @@
       "parts": [
         "../models/baine-shoulder-hq.glb"
       ],
-      "bytes": 7868184,
+      "bytes": 4166848,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 3 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "88d2f657",
@@ -353,10 +353,10 @@
     {
       "id": "baine-chest",
       "part": "Байн · Нагрудник",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
       "polys": "8.1k граней · 7.6k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь CHEST. 8 142 граней (7 586 квадов + 556 треугольников, квадов 93.2%), лимит 8 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Нагрудник-халтер: кожаные чашки с бирюзовыми вставками, металлическая окантовка и ошейник под мордой. Мультивью: спереди, сзади. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo (металл не зажат). Height из улучшенной нормали (±0.46 мм). Посажен на тело в «Сборке».",
+      "note": "Тауренша Байн, деталь CHEST. 8 142 граней (7 586 квадов + 556 треугольников, квадов 93.2%), лимит 8 000. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Нагрудник-халтер: кожаные чашки с бирюзовыми вставками, металлическая окантовка и ошейник под мордой. Мультивью: спереди, сзади. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo (металл не зажат). Height из улучшенной нормали (±0.46 мм). Посажен на тело в «Сборке».",
       "source": "Tripo 8138d628",
       "yaw": 0,
       "height": 0.62,
@@ -364,7 +364,7 @@
       "parts": [
         "../models/baine-chest-hq.glb"
       ],
-      "bytes": 9866332,
+      "bytes": 5067316,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 8 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "8138d628",
@@ -402,10 +402,10 @@
     {
       "id": "baine-glove",
       "part": "Байн · Наруч",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "label": "Tripo Smart Mesh P2.0 + текстура 4K + PBR + AO + height",
       "polys": "3.3k граней · 1.6k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь GLOVE. 3 281 граней (1 648 квадов + 1 633 треугольников, квадов 50.2%), лимит 2 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Наруч с бирюзовым камнем и меховая манжета на плечо. Мультивью: спереди, сзади (проект 728acec6). Правый; левый в «Сборке» — зеркальная копия. Посажен на руку: наруч и манжета подогнаны по руке тела (масштаб, поворот, сплющивание), 86 внутренних треугольников убрано. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.68 мм).",
+      "note": "Тауренша Байн, деталь GLOVE. 3 281 граней (1 648 квадов + 1 633 треугольников, квадов 50.2%), лимит 2 500. Текстура из Tripo (Smart UV → Texture 8K по видам), для просмотрщика все карты сжаты до 4K (WebP q95, height 4K lossless). Наруч с бирюзовым камнем и меховая манжета на плечо. Мультивью: спереди, сзади (проект 728acec6). Правый; левый в «Сборке» — зеркальная копия. Посажен на руку: наруч и манжета подогнаны по руке тела (масштаб, поворот, сплющивание), 86 внутренних треугольников убрано. Normal (из 8K): нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.68 мм).",
       "source": "Tripo 728acec6",
       "yaw": 0,
       "height": 0.532,
@@ -413,7 +413,7 @@
       "parts": [
         "../models/baine-glove-hq.glb"
       ],
-      "bytes": 7745740,
+      "bytes": 4015900,
       "tripo": {
         "settings": "Smart Mesh P2.0, мультивью, квады, 2 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "728acec6",
