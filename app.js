@@ -201,13 +201,14 @@ function subdivide(g) {
   r.setIndex(new THREE.BufferAttribute(out, 1));
   return r;
 }
+const denseOf = new WeakMap();   // base geometry -> its subdivided displacement copy
 function setDisplaceGeometry(on) {
   for (const mesh of meshes) {
     const u = mesh.userData;
     if (![].concat(u.orig).some((m) => m.userData.heightTex)) continue;
     if (!u.baseGeom) u.baseGeom = mesh.geometry;
-    if (on && !u.denseGeom) u.denseGeom = subdivide(subdivide(u.baseGeom));
-    mesh.geometry = on ? u.denseGeom : u.baseGeom;
+    if (on && !denseOf.has(u.baseGeom)) denseOf.set(u.baseGeom, subdivide(subdivide(u.baseGeom)));
+    mesh.geometry = on ? denseOf.get(u.baseGeom) : u.baseGeom;
   }
 }
 let mode = 'pbr';
@@ -356,6 +357,7 @@ function setHqBadge(text) {
 const byId = (id) => manifest.models.find((m) => m.id === id);
 const PREVIEW_MAPS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'];
 let loadToken = 0;
+let curScene = null;
 let bufCache = new Map(), texCache = new Map();   // per loadModel: mirrored pairs download one file once
 const cached = (cache, key, make) => { if (!cache.has(key)) cache.set(key, make()); return cache.get(key); };
 const loadHeight = (src) => cached(texCache, src, async () => {
@@ -440,6 +442,7 @@ async function loadModel(entry) {
     if (token !== loadToken) return;
   }
   bufCache = new Map();
+  curScene = gscene;
   const gltf = { scene: gscene };
   // Tripo exports face +X; entry.yaw turns the model to face +Z (the viewer's "front").
   const model = new THREE.Group();
@@ -918,7 +921,8 @@ function repivot(part) {
   const c = box.getCenter(new THREE.Vector3());
   if (part.isMesh) {   // overlays / quad lines share this geometry; the displacement copy moves with it
     const u = part.userData;
-    for (const g of new Set([part.geometry, u.baseGeom, u.denseGeom].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
+    for (const g of new Set([part.geometry, u.baseGeom, u.baseGeom && denseOf.get(u.baseGeom)].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
+    u.shift = (u.shift || new THREE.Vector3()).sub(c);   // a later Tripo geometry swap gets the same shift
   }
   else for (const ch of part.children) ch.position.sub(c);
   part.position.add(c.clone().multiply(part.scale).applyQuaternion(part.quaternion));
@@ -974,6 +978,12 @@ function setTool(mode) {
 }
 function fillEditFields() {
   const p = edit.sel;
+  const raw = p && partEntry(p)?.raw;
+  $('#edit-raw').disabled = !raw;
+  $('#edit-raw').textContent = p && p.userData.raw ? 'Вернуть подгонку к телу' : 'Как из Tripo (без деформации)';
+  $('#edit-raw').title = !p ? 'Выберите деталь' : raw ? 'Показать геометрию детали ровно такой, какой её сделал Tripo, без подгонки к телу'
+    : 'Эта деталь не деформировалась: её геометрия и так как из Tripo';
+  $('#edit-remove').disabled = !(p && p.userData.added);
   if (!p) { for (const id of ['#edit-scale', '#edit-x', '#edit-y', '#edit-z']) $(id).value = ''; return; }
   const b = p.userData.base;
   $('#edit-scale').value = (p.scale.x / b.s.x * 100).toFixed(1);
@@ -1005,12 +1015,14 @@ function isEdited(p) {
 function editsJSON() {
   const parts = {};
   for (const p of edit.parts) {
-    if (!isEdited(p)) continue;
+    if (!isEdited(p) && !p.userData.added && !p.userData.raw) continue;
     const b = p.userData.base;
     const e = new THREE.Euler().setFromQuaternion(b.q.clone().invert().multiply(p.quaternion));
     p.updateMatrix();
     parts[p.name] = {
       label: partLabel(p),
+      ...(p.userData.added ? { added: p.userData.added } : {}),
+      ...(p.userData.raw ? { raw: true } : {}),
       // apply to the part as it is in the GLB: new = delta_matrix x old (column-major 4x4, glTF space)
       delta_matrix: p.matrix.clone().multiply(b.m.clone().invert()).toArray().map((v) => +v.toFixed(6)),
       pivot: b.p.toArray().map((v) => +v.toFixed(5)),
@@ -1029,15 +1041,169 @@ function applySaved() {
   const raw = localStorage.getItem(editKeyName());
   if (!raw) return 0;
   let n = 0;
+  const added = [];
   try {
     for (const [name, t] of Object.entries(JSON.parse(raw).parts || {})) {
+      if (t.added) { added.push([name, t]); n++; continue; }
       const p = edit.parts.find((x) => x.name === name);
       if (!p) continue;
       p.position.fromArray(t.position); p.quaternion.fromArray(t.quaternion); p.scale.fromArray(t.scale);
-      if (isEdited(p)) n++;                   // a placement already written into the files counts as nothing
+      if (t.raw) setRaw(p, true).catch(showEditError);
+      if (isEdited(p) || t.raw) n++;          // a placement already written into the files counts as nothing
     }
   } catch (err) { console.warn('bad saved edits', err); }
+  if (added.length) restoreAdded(added, loadToken).catch(showEditError);
   return n;
+}
+async function restoreAdded(list, token) {
+  for (const [name, t] of list) {
+    const p = await addModel(t.added, name);
+    if (!p || token !== loadToken) return;
+    p.position.fromArray(t.position); p.quaternion.fromArray(t.quaternion); p.scale.fromArray(t.scale);
+    if (t.raw) await setRaw(p, true);
+  }
+  edit.dirty = false;
+  fillEditFields();
+}
+const showEditError = (err) => { console.error(err); setStatus(`Ошибка: ${err.message || err}`); };
+
+// ---------- edit mode: add any model of the list as one more part ----------
+const partMeshes = (part) => { const a = []; part.traverse((o) => { if (o.isMesh && o.userData.orig) a.push(o); }); return a; };
+const partEntry = (part) => { const m = partMeshes(part)[0]; return m ? byId(m.userData.srcId) : null; };
+function fillAddList() {
+  const sel = $('#edit-add-model');
+  sel.innerHTML = '';
+  for (const m of manifest.models) {
+    if (m.assembly) continue;
+    const o = document.createElement('option');
+    o.value = m.id;
+    o.textContent = `${m.part || 'Модель'} · ${m.label || m.id}`;
+    sel.append(o);
+  }
+}
+// The new part stands on the floor to the right of the model; it is saved with the placement («Сохранить»).
+async function addModel(id, name) {
+  const e = byId(id);
+  if (!e || e.assembly || !curScene) return null;
+  const token = loadToken;
+  const total = srcBytes(e);
+  let got = 0;
+  setStatus(`Загружаю «${e.part || e.id}»…`);
+  const inner = await loadSource(e, (n) => { got += n; setStatus(`Загружаю «${e.part || e.id}»: ${mb(got)} / ${mb(total)} МБ`); });
+  $('#loading').hidden = true;
+  if (token !== loadToken) return null;
+  const part = new THREE.Group();
+  part.add(inner);
+  let k = 1;
+  while (!name && edit.parts.some((p) => p.name === `${e.id}+${k}`)) k++;
+  part.name = name || `${e.id}+${k}`;
+  part.userData.label = `${e.part || e.id} (добавлена${k > 1 ? ` ${k}` : ''})`;
+  part.userData.added = e.id;
+  part.traverse((o) => { if (o.isMesh) Object.assign(o.userData, { partName: part.name, texPart: part.userData.label }); });
+  const toLocal = curScene.matrixWorld.clone().invert();
+  const model = new THREE.Box3();
+  for (const p of edit.parts) if (p.visible) model.union(new THREE.Box3().setFromObject(p).applyMatrix4(toLocal));
+  curScene.add(part);
+  curScene.updateMatrixWorld(true);
+  const pb = new THREE.Box3().setFromObject(part).applyMatrix4(toLocal);
+  if (!model.isEmpty()) part.position.set(model.max.x - pb.min.x + 0.1 * (model.max.x - model.min.x), model.min.y - pb.min.y, 0);
+  repivot(part);
+  part.updateMatrix();
+  part.userData.base = { p: part.position.clone(), q: part.quaternion.clone(), s: part.scale.clone(), m: part.matrix.clone() };
+  edit.parts.push(part);
+  linkPairs();
+  buildPartList();
+  fillAssembly(curScene);
+  fillPbrMaps();
+  applyMode(mode);
+  fillPolys({ scene: curScene });
+  fillTextures();
+  part.updateMatrixWorld(true);
+  const wb = new THREE.Box3().setFromObject(part), v = new THREE.Vector3();
+  camera.updateMatrixWorld();
+  const out = [0, 1, 2, 3, 4, 5, 6, 7].some((i) => {   // reframe only when the new part is (partly) off screen
+    v.set(i & 1 ? wb.max.x : wb.min.x, i & 2 ? wb.max.y : wb.min.y, i & 4 ? wb.max.z : wb.min.z).project(camera);
+    return Math.abs(v.x) > 1 || Math.abs(v.y) > 1;
+  });
+  if (out) setCamera('front');
+  if (e.preview) upgradeTextures([e], token).catch((err) => { console.error(err); setHqBadge(''); });
+  setStatus(`Добавлено: ${part.userData.label}. Подгоните и нажмите «Сохранить».`);
+  return part;
+}
+function removePart(p) {
+  if (!p || !p.userData.added) return;
+  select(null);
+  const gone = new Set(partMeshes(p));
+  for (let i = meshes.length - 1; i >= 0; i--) if (gone.has(meshes[i])) meshes.splice(i, 1);
+  for (const [k, m] of modeCache) if ([...gone].some((o) => k.startsWith(o.uuid))) { m.dispose(); modeCache.delete(k); }
+  p.removeFromParent();
+  edit.parts = edit.parts.filter((x) => x !== p);
+  linkPairs();
+  buildPartList();
+  fillAssembly(curScene);
+  fillPolys({ scene: curScene });
+  fillTextures();
+  markDirty();
+}
+
+// ---------- edit mode: «Как из Tripo» ----------
+// entry.raw = { src, offset } is the part's geometry exactly as Tripo made it (same UVs, no textures). Parts deformed to fit
+// the body (chest conformed, glove tubes refitted) switch back to it and forth; textures and placement stay as they are.
+const rawCache = new Map();   // src -> Promise<[geometry per mesh]>
+function loadRaw(src) {
+  return cached(rawCache, src, async () => {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`${src}: ${res.status}`);
+    const g = await loader.parseAsync(await res.arrayBuffer(), '');
+    const out = [];
+    g.scene.traverse((o) => { if (o.isMesh) out.push(o.geometry); });
+    return out;
+  });
+}
+async function setRaw(part, on) {
+  const e = partEntry(part);
+  if (!e || !e.raw) return;
+  const list = partMeshes(part);
+  if (on && list.some((m) => !m.userData.rawGeom)) {
+    setStatus('Загружаю геометрию из Tripo…');
+    const geos = await loadRaw(e.raw.src);
+    for (const m of list) {
+      const u = m.userData, src = geos[u.srcIdx];
+      if (!src || u.rawGeom) continue;
+      const off = new THREE.Vector3(...(e.raw.offset || [0, 0, 0])).add(u.shift || new THREE.Vector3());
+      u.rawGeom = src.clone().translate(off.x, off.y, off.z);
+    }
+  }
+  for (const m of list) {
+    const u = m.userData;
+    if (!u.rawGeom) continue;
+    if (!u.fitGeom) u.fitGeom = u.baseGeom || m.geometry;
+    const g = on ? u.rawGeom : u.fitGeom, prev = u.baseGeom || m.geometry;
+    if (g === prev) continue;
+    u.baseGeom = g; m.geometry = g;
+    if (u.overlay) u.overlay.geometry = g;
+    if (u.quadLines) {
+      if (!u.quadOf) u.quadOf = new Map([[prev, u.quadLines]]);
+      if (!u.quadOf.has(g)) u.quadOf.set(g, quadLines(m));
+      const old = u.quadLines, q = u.quadOf.get(g);
+      if (q) { q.visible = old.visible; q.material = old.material; m.remove(old); m.add(q); u.quadLines = q; }
+    }
+  }
+  part.userData.raw = on;
+  applyMode(mode);
+  fillPolys({ scene: curScene });
+  if (edit.sel === part || edit.sel === part.userData.partner) fillEditFields();
+  setStatus(on ? `${partLabel(part)}: геометрия как из Tripo (без подгонки к телу).` : `${partLabel(part)}: подгонка к телу возвращена.`);
+}
+async function toggleRaw() {
+  const p = edit.sel;
+  if (!p) return;
+  const on = !p.userData.raw;
+  await setRaw(p, on);
+  const q = p.userData.partner;
+  if (q && $('#edit-mirror').checked) await setRaw(q, on);
+  fillEditFields();
+  markDirty();
 }
 function download(blob, name) {
   const a = document.createElement('a');
@@ -1112,7 +1278,16 @@ for (const b of document.querySelectorAll('#edit-tools button')) b.onclick = () 
 $('#edit-scale').onchange = (e) => setScalePct(+e.target.value);
 for (const id of ['#edit-x', '#edit-y', '#edit-z']) $(id).onchange = () => setOffsetCm([$('#edit-x').value, $('#edit-y').value, $('#edit-z').value]);
 $('#edit-reset').onclick = () => { if (edit.sel) { resetPart(edit.sel); syncMirror(edit.sel); fillEditFields(); markDirty(); } };
-$('#edit-reset-all').onclick = () => { for (const p of edit.parts) resetPart(p); fillEditFields(); markDirty(); };
+$('#edit-reset-all').onclick = () => { for (const p of edit.parts) { resetPart(p); if (p.userData.raw) setRaw(p, false).catch(showEditError); } fillEditFields(); markDirty(); };
+$('#edit-raw').onclick = () => toggleRaw().catch(showEditError);
+$('#edit-remove').onclick = () => removePart(edit.sel);
+$('#edit-add-btn').onclick = async () => {
+  const b = $('#edit-add-btn');
+  b.disabled = true;
+  try { const p = await addModel($('#edit-add-model').value); if (p) { setEdit(true); select(p); markDirty(); } }
+  catch (err) { showEditError(err); }
+  finally { b.disabled = false; }
+};
 $('#edit-save').onclick = () => saveEdits();
 $('#edit-glb').onclick = () => exportGLB();
 setTool('translate');
@@ -1149,7 +1324,10 @@ window.viewer = {
     save: () => saveEdits(),
     json: () => editsJSON(),
     glb: () => exportGLB(),
-    state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
+    add: (id) => addModel(id),
+    raw: (on) => edit.sel && setRaw(edit.sel, on),
+    remove: () => removePart(edit.sel),
+    state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, raw: !!(edit.sel && edit.sel.userData.raw), parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
   },
   mode: (id) => applyMode(id),
   camera: (name) => setCamera(name),
@@ -1159,5 +1337,6 @@ window.viewer = {
 // ---------- start ----------
 manifest = await (await fetch('models.json', { cache: 'no-cache' })).json();
 buildNav();
+fillAddList();
 const wanted = new URLSearchParams(location.search).get('m');
 loadModel(manifest.models.find((m) => m.id === wanted) || manifest.models[0]).catch(showError);

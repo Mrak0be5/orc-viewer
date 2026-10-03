@@ -915,6 +915,14 @@
         ],
         "bytes": 1510588,
         "heightSrc": "models/baine-chest-height-lite.webp"
+      },
+      "raw": {
+        "src": "models/baine-chest-tripo.glb",
+        "offset": [
+          0,
+          0,
+          0
+        ]
       }
     },
     {
@@ -956,6 +964,14 @@
         ],
         "bytes": 1048088,
         "heightSrc": "models/baine-glove-height-lite.webp"
+      },
+      "raw": {
+        "src": "models/baine-glove-tripo.glb",
+        "offset": [
+          0,
+          -0.0342,
+          0
+        ]
       }
     }
   ]

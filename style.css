@@ -80,6 +80,9 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
 #edit-panel .xyz { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; }
 #edit-panel .xyz label { display: flex; align-items: center; gap: 4px; }
 #edit-fields.off { opacity: .45; pointer-events: none; }
+#edit-add { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 8px; }
+#edit-add select { min-width: 0; background: #22242a; color: #e6e6e6; border: 1px solid #34373e; border-radius: 6px; padding: 4px 6px; font: inherit; }
+#edit-panel button:disabled { opacity: .45; cursor: default; }
 #edit-panel label.check { display: flex; gap: 6px; align-items: center; margin-top: 8px; cursor: pointer; }
 #pbr-maps label small { color: #8a8f99; margin-left: 4px; }
 #pbr-maps label.off { opacity: .45; }
