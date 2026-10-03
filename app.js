@@ -17,6 +17,13 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;
 view.appendChild(renderer.domElement);
+// three.js applies aoMap to the environment light only; with a strong key light the AO was nearly invisible.
+// Let it darken the direct light too (AO_DIRECT of the way), like most asset viewers do.
+const AO_DIRECT = 0.65;
+THREE.ShaderChunk.aomap_fragment = THREE.ShaderChunk.aomap_fragment.replace('reflectedLight.indirectDiffuse *= ambientOcclusion;',
+  `reflectedLight.indirectDiffuse *= ambientOcclusion;
+  reflectedLight.directDiffuse *= mix( 1.0, ambientOcclusion, ${AO_DIRECT.toFixed(2)} );
+  reflectedLight.directSpecular *= mix( 1.0, ambientOcclusion, ${AO_DIRECT.toFixed(2)} );`);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#26282c');
@@ -105,7 +112,7 @@ const PBR_MAPS = [
   { key: 'roughnessMap', id: 'pm-rough', label: 'Roughness' },
   { key: 'metalnessMap', id: 'pm-metal', label: 'Metalness' },
   { key: 'aoMap', id: 'pm-ao', label: 'AO' },
-  { key: 'displacementMap', id: 'pm-disp', label: 'Displacement', hint: 'из Height, геометрия ×16' },
+  { key: 'displacementMap', id: 'pm-disp', label: 'Displacement', hint: 'из Height, плотная сетка + свет' },
   { key: 'emissiveMap', id: 'pm-emissive', label: 'Emissive' },
 ];
 const mapSource = (m, key) => (key === 'normalMap' ? m.userData.normalMap : key === 'displacementMap' ? m.userData.heightTex : m[key]) || null;
@@ -116,11 +123,10 @@ function pbrMaterial(orig) {
     const ud = orig.userData; orig.userData = {}; // Material.clone JSON-copies userData, which holds textures
     p = orig.clone(); orig.userData = ud; ud.pbr = p; p.userData.src = orig;
   }
-  for (const d of PBR_MAPS) p[d.key] = mapOn(d.key) ? mapSource(orig, d.key) : null;
+  for (const d of PBR_MAPS) p[d.key] = d.key !== 'displacementMap' && mapOn(d.key) ? mapSource(orig, d.key) : null; // displacement is baked into the geometry
   p.roughness = p.roughnessMap || !orig.roughnessMap ? orig.roughness : 0.6;
   p.metalness = p.metalnessMap || !orig.metalnessMap ? orig.metalness : 0;
   if (p.emissive) p.emissive.copy(p.emissiveMap || !orig.emissiveMap ? orig.emissive : new THREE.Color(0));
-  Object.assign(p, p.displacementMap ? dispParams(orig) : { displacementScale: 1, displacementBias: 0 });
   p.needsUpdate = true;
   return p;
 }
@@ -160,17 +166,70 @@ const MODES = [
   { id: 'ao', key: 'a', label: 'AO', make: (m) => dataMaterial(m.aoMap, new THREE.Vector4(1, 0, 0, 0), 1) },
   { id: 'height', key: 'h', label: 'Height', make: (m) => dataMaterial(m.userData.heightTex, new THREE.Vector4(1, 0, 0, 0), 0.5) },
   { id: 'displace', key: 'd', label: 'Дисплейсмент', make: (m) => new THREE.MeshStandardMaterial({
-    color: 0xb8b2aa, roughness: 0.65, metalness: 0, displacementMap: m.userData.heightTex || null, ...dispParams(m),
+    color: 0xb8b2aa, roughness: 0.65, metalness: 0,
     normalMap: useNormalMap() ? m.userData.normalMap : null, normalScale: m.normalScale ? m.normalScale.clone() : new THREE.Vector2(1, 1) }) },
 ];
 // Height map (entry.heightMap: { src, mm } — zero level 0.5, 1.0 = +mm), kept per material (userData.heightTex /
-// heightMm) so an assembly can mix parts with and without one. Displacement preview runs on a 4× midpoint-subdivided
-// copy of the mesh; the relief is a few millimetres, so it can be exaggerated.
+// heightMm) so an assembly can mix parts with and without one. Displacement runs on the CPU: the mesh is midpoint-subdivided
+// until its edges are ~DISP_EDGE (within a triangle budget), moved along the normal by the height, and its normals are
+// recomputed (welded across UV seams) — so the relief shows in the lighting, not only in the silhouette as GPU displacementMap would.
 const hasHeight = () => meshes.some((o) => [].concat(o.userData.orig).some((m) => m.userData.heightTex));
 const dispExag = () => +$('#disp-exag').value;
-function dispParams(m) {
-  const mm = (m && m.userData.heightMm) || 0, h = mm / 1000 * dispExag();
-  return { displacementScale: 2 * h, displacementBias: -h };
+const DISP_EDGE = 0.006, DISP_TRIS_MESH = 2.5e6, DISP_TRIS_ALL = 8e6;
+const heightPix = new WeakMap();  // texture -> { w, h, d: Uint8Array (R) }
+function heightPixels(t) {
+  if (!heightPix.has(t)) {
+    const im = t.image, w = im.width, h = im.height, c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+    const rgba = x.getImageData(0, 0, w, h).data, d = new Uint8Array(w * h);
+    for (let i = 0; i < d.length; i++) d[i] = rgba[i * 4];
+    heightPix.set(t, { w, h, d });
+  }
+  return heightPix.get(t);
+}
+function sampleHeight({ w, h, d }, u, v) {  // bilinear, flipY = false: v = 0 is the top row; 0..1
+  const x = Math.min(Math.max(u * w - 0.5, 0), w - 1.001), y = Math.min(Math.max(v * h - 0.5, 0), h - 1.001);
+  const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * w + x0;
+  return ((d[i] * (1 - fx) + d[i + 1] * fx) * (1 - fy) + (d[i + w] * (1 - fx) + d[i + w + 1] * fx) * fy) / 255;
+}
+function dispLevels(g, budget) {
+  const P = g.attributes.position, idx = g.index.array, tris = idx.length / 3, step = Math.max(1, Math.floor(tris / 4000));
+  let sum = 0, k = 0;
+  for (let t = 0; t < tris; t += step, k++) {
+    const a = idx[t * 3], b = idx[t * 3 + 1];
+    sum += Math.hypot(P.getX(a) - P.getX(b), P.getY(a) - P.getY(b), P.getZ(a) - P.getZ(b));
+  }
+  let lv = Math.min(4, Math.max(2, Math.ceil(Math.log2((sum / k) / DISP_EDGE))));
+  while (lv > 2 && tris * 4 ** lv > budget) lv--;
+  return lv;
+}
+function displaceGeom(sub, tex, mm) {
+  const g = sub.clone(), P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv, n = P.count;
+  const px = heightPixels(tex), s = mm / 1000 * dispExag(), idx = g.index.array;
+  const id = new Uint32Array(n), keyOf = new Map();  // weld split (UV-seam) vertices for the normals
+  for (let i = 0; i < n; i++) {
+    const k = `${Math.round(P.getX(i) * 1e5)},${Math.round(P.getY(i) * 1e5)},${Math.round(P.getZ(i) * 1e5)}`;
+    let j = keyOf.get(k); if (j === undefined) { j = keyOf.size; keyOf.set(k, j); }
+    id[i] = j;
+  }
+  for (let i = 0; i < n; i++) {
+    const dd = (sampleHeight(px, U.getX(i), U.getY(i)) * 2 - 1) * s;
+    P.setXYZ(i, P.getX(i) + N.getX(i) * dd, P.getY(i) + N.getY(i) * dd, P.getZ(i) + N.getZ(i) * dd);
+  }
+  const acc = new Float32Array(keyOf.size * 3), p = P.array;
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2], vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const v of [idx[t], idx[t + 1], idx[t + 2]]) { const j = id[v] * 3; acc[j] += nx; acc[j + 1] += ny; acc[j + 2] += nz; }
+  }
+  for (let i = 0; i < n; i++) {
+    const j = id[i] * 3, l = Math.hypot(acc[j], acc[j + 1], acc[j + 2]) || 1;
+    N.setXYZ(i, acc[j] / l, acc[j + 1] / l, acc[j + 2] / l);
+  }
+  P.needsUpdate = N.needsUpdate = true; g.computeBoundingBox(); g.computeBoundingSphere();
+  return g;
 }
 function subdivide(g) {
   const idx = g.index.array, n = g.attributes.position.count;
@@ -201,14 +260,28 @@ function subdivide(g) {
   r.setIndex(new THREE.BufferAttribute(out, 1));
   return r;
 }
-const denseOf = new WeakMap();   // base geometry -> its subdivided displacement copy
+const denseOf = new WeakMap();   // base geometry -> { sub: subdivided copy, f: triangles per base triangle, geom: displaced copy, key }
+let dispOn = false;
 function setDisplaceGeometry(on) {
-  for (const mesh of meshes) {
+  dispOn = on;
+  const list = meshes.filter((o) => !o.isSkinnedMesh && [].concat(o.userData.orig).some((m) => m.userData.heightTex));   // skinned: normal map only
+  const total = list.reduce((t, o) => t + (o.userData.baseGeom || o.geometry).index.count / 3, 0);
+  for (const mesh of list) {
     const u = mesh.userData;
-    if (![].concat(u.orig).some((m) => m.userData.heightTex)) continue;
     if (!u.baseGeom) u.baseGeom = mesh.geometry;
-    if (on && !denseOf.has(u.baseGeom)) denseOf.set(u.baseGeom, subdivide(subdivide(u.baseGeom)));
-    mesh.geometry = on ? denseOf.get(u.baseGeom) : u.baseGeom;
+    if (!on) { mesh.geometry = u.baseGeom; continue; }
+    const base = u.baseGeom, m = [].concat(u.orig).find((x) => x.userData.heightTex), tris = base.index.count / 3;
+    const budget = Math.min(DISP_TRIS_MESH, DISP_TRIS_ALL * tris / total);
+    let d = denseOf.get(base);
+    const lv = dispLevels(base, budget);
+    if (!d || d.lv !== lv) {
+      let sub = base; for (let i = 0; i < lv; i++) sub = subdivide(sub);
+      d && d.geom && d.geom.dispose(); d && d.sub.dispose();
+      d = { sub, lv, f: 4 ** lv, geom: null, key: '' }; denseOf.set(base, d);
+    }
+    const key = `${m.userData.heightTex.uuid}|${m.userData.heightMm}|${dispExag()}`;
+    if (d.key !== key) { d.geom?.dispose(); d.geom = displaceGeom(d.sub, m.userData.heightTex, m.userData.heightMm); d.key = key; }
+    mesh.geometry = d.geom;
   }
   syncCuts();
 }
@@ -376,15 +449,17 @@ async function loadSource(e, onBytes) {
   const buffer = await cached(bufCache, parts.join('|'), () => fetchParts(parts, onBytes));
   setProgress(1, 'Распаковка…');
   const gltf = await loader.parseAsync(buffer, '');
+  if (gltf.animations.length) gltf.scene.userData.clips = gltf.animations;
   let idx = 0;
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
+    if (o.isSkinnedMesh) o.frustumCulled = false;   // the bind-pose bounds don't follow the animation
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) { m.userData.normalMap = m.normalMap; if (heightTex) { m.userData.heightTex = heightTex; m.userData.heightMm = e.heightMap.mm; } }
     o.userData.orig = o.material;
     o.userData.srcId = e.id;
     o.userData.srcIdx = idx++;
-    if (e.quads) {
+    if (e.quads && !o.isSkinnedMesh) {   // static line copies would stay in the bind pose
       const q = quadLines(o);
       if (q) { q.visible = false; o.add(q); o.userData.quadLines = q; }
     }
@@ -411,7 +486,7 @@ async function loadModel(entry) {
   setHqBadge('');
   for (const t of liveTextures()) t.dispose();
   for (const m of modeCache.values()) m.dispose();
-  root.clear(); meshes.length = 0; modeCache.clear();
+  root.clear(); meshes.length = 0; modeCache.clear(); setAnim(null);
   bufCache = new Map(); texCache = new Map();
   const items = entry.assembly ? entry.assembly.map((a) => ({ a, e: byId(a.id) })).filter((x) => x.e) : [{ a: null, e: entry }];
   const uniq = [...new Map(items.map((x) => [x.e.id, x.e])).values()];
@@ -452,6 +527,8 @@ async function loadModel(entry) {
   model.add(gscene);
   root.add(model);
   prepareCuts(gscene);
+  model.updateMatrixWorld(true);
+  model.traverse((o) => { if (o.isSkinnedMesh) { o.skeleton.update(); o.computeBoundingBox(); o.computeBoundingSphere(); } });   // bounds from the posed bones, not identity ones
   rawBox = new THREE.Box3().setFromObject(model);
   normalize();
   fillPbrMaps();
@@ -462,6 +539,7 @@ async function loadModel(entry) {
   fillRefs(entry);
   editOnLoad(gscene);
   fillAssembly(gscene);
+  setAnim(gscene);
   setCamera('front');
   $('#loading').hidden = true;
   const full = uniq.filter((e) => e.preview);
@@ -557,7 +635,7 @@ function syncCuts() {
   for (const { by, list } of cuts) for (const { o, keep, qkeep } of list) {
     const on = by.visible, base = o.userData.baseGeom || o.geometry;
     base.setDrawRange(0, on ? keep : Infinity);
-    denseOf.get(base)?.setDrawRange(0, on ? keep * 16 : Infinity);
+    const d = denseOf.get(base); if (d) for (const g of [d.sub, d.geom]) g?.setDrawRange(0, on ? keep * d.f : Infinity);
     o.userData.quadLines?.geometry.setDrawRange(0, on ? qkeep : Infinity);
   }
 }
@@ -581,11 +659,12 @@ function fillAssembly(gscene) {
 // Center on X/Z, feet at 0, optional scale to 2.10 m.
 function normalize() {
   const size = rawBox.getSize(new THREE.Vector3());
-  const s = !current.assembly && $('#scale21').checked && size.y > 0 ? (current.height || TARGET_HEIGHT) / size.y : 1;
+  const inPlace = current.assembly || current.bodySpace;   // bodySpace: rigged export, already in the body's metres
+  const s = !inPlace && $('#scale21').checked && size.y > 0 ? (current.height || TARGET_HEIGHT) / size.y : 1;
   const model = root.children[0];
   if (!model) return;
   model.scale.setScalar(s);
-  if (current.assembly) { model.position.set(0, 0, 0); buildRuler(current.height || size.y, size.x / 2); return; }  // already in the body's space
+  if (inPlace) { model.position.set(0, 0, 0); buildRuler(current.height || size.y, size.x / 2); return; }  // already in the body's space
   const c = rawBox.getCenter(new THREE.Vector3());
   model.position.set(-c.x * s, -rawBox.min.y * s, -c.z * s);
   buildRuler(size.y * s, size.x * s / 2);
@@ -867,10 +946,10 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 
 // ---------- controls ----------
 $('#wire-overlay').onchange = applyOverlay;
+let dispTimer = 0;
 $('#disp-exag').oninput = () => {
   $('#disp-exag-v').textContent = `×${dispExag()}`;
-  for (const [k, m] of modeCache) if (m.displacementMap) Object.assign(m, dispParams(m.userData.src));
-  for (const o of meshes) for (const m of [].concat(o.userData.orig)) if (m.userData.pbr?.displacementMap) Object.assign(m.userData.pbr, dispParams(m));
+  clearTimeout(dispTimer); dispTimer = setTimeout(() => { if (dispOn) setDisplaceGeometry(true); }, 200);
 };
 $('#scale21').onchange = () => { normalize(); setCamera('front'); };
 $('#ruler').onchange = (e) => { ruler.visible = e.target.checked; };
@@ -968,7 +1047,8 @@ function repivot(part) {
   const c = box.getCenter(new THREE.Vector3());
   if (part.isMesh) {   // overlays / quad lines share this geometry; the displacement copy moves with it
     const u = part.userData;
-    for (const g of new Set([part.geometry, u.baseGeom, u.baseGeom && denseOf.get(u.baseGeom)].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
+    const d = u.baseGeom && denseOf.get(u.baseGeom);
+    for (const g of new Set([part.geometry, u.baseGeom, d?.sub, d?.geom].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
     u.shift = (u.shift || new THREE.Vector3()).sub(c);   // a later Tripo geometry swap gets the same shift
   }
   else for (const ch of part.children) ch.position.sub(c);
@@ -978,7 +1058,8 @@ function repivot(part) {
 }
 
 function editOnLoad(gscene) {
-  edit.parts = gscene.children.filter((o) => { let m = false; o.traverse((x) => { if (x.isMesh) m = true; }); return m; });
+  // skinned (rigged) parts stay put: moving the mesh pivot would not move the bones (model floated ~1.2 m up)
+  edit.parts = gscene.children.filter((o) => { let m = false, sk = false; o.traverse((x) => { if (x.isMesh) m = true; if (x.isSkinnedMesh) sk = true; }); return m && !sk; });
   for (const p of edit.parts) {
     repivot(p);
     p.updateMatrix();
@@ -1339,6 +1420,38 @@ $('#edit-save').onclick = () => saveEdits();
 $('#edit-glb').onclick = () => exportGLB();
 setTool('translate');
 
+// ---------- animation (rigged entries: one GLB with several glTF clips) ----------
+const clock = new THREE.Clock();
+const anim = { mixer: null, actions: [], cur: null, paused: false };
+function setAnim(gscene) {
+  anim.mixer?.stopAllAction(); anim.mixer = null; anim.actions = []; anim.cur = null;
+  const clips = gscene?.userData.clips;
+  $('#anim-box').hidden = !clips;
+  if (!clips) return;
+  anim.mixer = new THREE.AnimationMixer(gscene);
+  anim.mixer.timeScale = +$('#anim-speed').value;
+  const box = $('#anim-clips'); box.innerHTML = '';
+  for (const c of clips) {
+    const b = document.createElement('button'); b.textContent = CLIP_NAMES[c.name] || c.name; b.dataset.clip = c.name;
+    b.onclick = () => playClip(c.name); box.append(b);
+    anim.actions.push(anim.mixer.clipAction(c));
+  }
+  const order = Object.keys(CLIP_NAMES), rank = (b) => (order.indexOf(b.dataset.clip) + 1) || 99;
+  box.append(...[...box.children].sort((a, b) => rank(a) - rank(b)));
+  playClip(clips.some((c) => c.name === 'Idle') ? 'Idle' : clips[0].name);
+}
+const CLIP_NAMES = { Idle: 'Стойка', Walk: 'Шаг', Attack: 'Удар', Roar: 'Рёв' };
+function playClip(name) {
+  const next = anim.actions.find((a) => a.getClip().name === name);
+  if (!next) return;
+  next.reset().play();
+  if (anim.cur && anim.cur !== next) anim.cur.crossFadeTo(next, 0.25, false);
+  anim.cur = next;
+  for (const b of document.querySelectorAll('#anim-clips button')) b.classList.toggle('on', b.dataset.clip === name);
+}
+$('#anim-speed').oninput = (e) => { $('#anim-speed-v').textContent = `×${(+e.target.value).toFixed(2)}`; if (anim.mixer) anim.mixer.timeScale = +e.target.value; };
+$('#anim-pause').onclick = () => { anim.paused = !anim.paused; $('#anim-pause').classList.toggle('on', anim.paused); $('#anim-pause').textContent = anim.paused ? 'Продолжить' : 'Пауза'; };
+
 // ---------- loop ----------
 function resize() {
   const w = view.clientWidth, h = view.clientHeight;
@@ -1353,6 +1466,8 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 function frame() {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (anim.mixer && !anim.paused) anim.mixer.update(dt);
   controls.update();
   if (tc.camera !== camera) tc.camera = camera;
   if (edit.sel) editBox.box.setFromObject(edit.sel);
@@ -1377,7 +1492,10 @@ window.viewer = {
     state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, raw: !!(edit.sel && edit.sel.userData.raw), parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
   },
   mode: (id) => applyMode(id),
+  anim: (name, t) => { if (name) playClip(name); if (t !== undefined && anim.cur) { anim.cur.time = t; anim.mixer.update(0); } return { clips: anim.actions.map((a) => a.getClip().name), cur: anim.cur && anim.cur.getClip().name }; },
   camera: (name) => setCamera(name),
+  look: (pos, target) => { camera.position.set(...pos); controls.target.set(...target); controls.update(); },
+  box: () => { const b = new THREE.Box3(); for (const o of meshes) b.expandByObject(o); return [b.min.toArray(), b.max.toArray()]; },
   state: () => ({ model: current && current.id, mode, meshes: meshes.length, loading: !$('#loading').hidden, text: $('#loading-text').textContent, hq: $('#hq-badge')?.hidden === false ? $('#hq-badge').textContent : '' }),
 };
 

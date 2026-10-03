@@ -55,6 +55,13 @@
     <p id="model-note"></p>
   </header>
 
+  <section id="anim-box" hidden>
+    <h2>Анимация <small>риг в Blender, клипы glTF</small></h2>
+    <div id="anim-clips" class="grid"></div>
+    <label class="range">Скорость <input type="range" id="anim-speed" min="0.1" max="2" step="0.05" value="1"> <span id="anim-speed-v">×1.00</span></label>
+    <p><button id="anim-pause">Пауза</button></p>
+  </section>
+
   <section id="asm-box" hidden>
     <h2>Детали сборки</h2>
     <div id="asm-parts" class="checks"></div>
@@ -80,7 +87,7 @@
   <section>
     <h2>Наложения</h2>
     <label><input type="checkbox" id="wire-overlay"> Сетка поверх (E)</label>
-    <label id="disp-box" hidden>Дисплейсмент, усиление <input type="range" id="disp-exag" min="1" max="20" step="1" value="1"> <span id="disp-exag-v">×1</span></label>
+    <label id="disp-box" hidden>Дисплейсмент, усиление <input type="range" id="disp-exag" min="1" max="10" step="0.5" value="4"> <span id="disp-exag-v">×4</span></label>
     <label><input type="checkbox" id="scale21" checked> Реальный масштаб (по детали)</label>
     <label><input type="checkbox" id="ruler" checked> Линейка роста</label>
     <label><input type="checkbox" id="grid-on" checked> Пол-сетка</label>
