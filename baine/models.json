@@ -3,11 +3,11 @@
     {
       "id": "baine-full",
       "part": "Байн · Сборка",
-      "label": "Полная сборка: тело, волосы, рога, нагрудник, наплечники",
-      "polys": "≈48.6k граней",
+      "label": "Полная сборка: тело, волосы, рога, нагрудник, наплечники, перчатки",
+      "polys": "≈55.2k граней",
       "date": "2026-10-03",
       "note": "Полная сборка Байн: каждая деталь — отдельный GLB из models.json, поставленный в пространство тела (м, Y вверх, лицом к +Z; rot в градусах XYZ). Посадка подобрана рендерами в Blender (asm/assemble.py). Детали включаются и выключаются в «Детали сборки»; посадку можно поправить в «✎ Редактировать» и сохранить.",
-      "source": "Tripo, 4367fabf, 107ce37e, d13bfe60, 8138d628, 88d2f657",
+      "source": "Tripo, 4367fabf, 107ce37e, d13bfe60, 8138d628, 88d2f657, 728acec6",
       "yaw": 0,
       "height": 2.3,
       "quads": true,
@@ -15,7 +15,7 @@
         "top": 0.12,
         "span": 0.36
       },
-      "bytes": 263073232,
+      "bytes": 312725340,
       "assembly": [
         {
           "id": "baine-body",
@@ -60,29 +60,64 @@
           "name": "Shoulder_R",
           "label": "Наплечник правый",
           "pos": [
-            -0.51,
-            1.62,
-            -0.03
+            -0.4221,
+            1.6405,
+            -0.026
           ],
-          "scale": 1.0,
-          "group": "Наплечники"
+          "scale": 0.9663,
+          "group": "Наплечники",
+          "rot": [
+            -3.04,
+            4.34,
+            -12.16
+          ]
         },
         {
           "id": "baine-shoulder",
           "name": "Shoulder_L",
           "label": "Наплечник левый",
           "pos": [
-            -0.51,
-            1.62,
-            -0.03
+            -0.4221,
+            1.6405,
+            -0.026
+          ],
+          "scale": 0.9663,
+          "mirror": true,
+          "group": "Наплечники",
+          "rot": [
+            -3.04,
+            4.34,
+            -12.16
+          ]
+        },
+        {
+          "id": "baine-glove",
+          "name": "Glove_R",
+          "label": "Перчатка правая",
+          "pos": [
+            -0.4901,
+            1.0889,
+            -0.0683
+          ],
+          "scale": 1.0,
+          "group": "Перчатки"
+        },
+        {
+          "id": "baine-glove",
+          "name": "Glove_L",
+          "label": "Перчатка левая",
+          "pos": [
+            -0.4901,
+            1.0889,
+            -0.0683
           ],
           "scale": 1.0,
           "mirror": true,
-          "group": "Наплечники"
+          "group": "Перчатки"
         }
       ],
       "tripo": {
-        "settings": "5 деталей из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
+        "settings": "6 деталей из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
         "inputs": [
           {
             "slot": "Тело · Спереди",
@@ -131,6 +166,14 @@
           {
             "slot": "Наплечники · Сзади",
             "src": "../refs/baine-shoulder-back.jpg"
+          },
+          {
+            "slot": "Перчатки · Спереди",
+            "src": "../refs/baine-glove-front.jpg"
+          },
+          {
+            "slot": "Перчатки · Сзади",
+            "src": "../refs/baine-glove-back.jpg"
           }
         ]
       }
@@ -171,40 +214,6 @@
       "heightMap": {
         "src": "../models/baine-body-height.png",
         "mm": 1.5287
-      }
-    },
-    {
-      "id": "baine-chest",
-      "part": "Байн · Нагрудник",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
-      "polys": "8.1k граней · 7.6k квадов",
-      "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь CHEST. 8 142 граней (7 586 квадов + 556 треугольников, квадов 93.2%), лимит 8 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Нагрудник-халтер: кожаные чашки с бирюзовыми вставками, металлическая окантовка и ошейник под мордой. Мультивью: спереди, сзади. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo (металл не зажат). Height из улучшенной нормали (±0.46 мм). Посажен на тело в «Сборке».",
-      "source": "Tripo 8138d628",
-      "yaw": 0,
-      "height": 0.62,
-      "quads": true,
-      "parts": [
-        "../models/baine-chest.glb"
-      ],
-      "bytes": 57749028,
-      "tripo": {
-        "settings": "Smart Mesh P2.0, мультивью, квады, 8 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
-        "task": "8138d628",
-        "inputs": [
-          {
-            "slot": "Спереди",
-            "src": "../refs/baine-chest-front.jpg"
-          },
-          {
-            "slot": "Сзади",
-            "src": "../refs/baine-chest-back.jpg"
-          }
-        ]
-      },
-      "heightMap": {
-        "src": "../models/baine-chest-height.png",
-        "mm": 0.4594
       }
     },
     {
@@ -311,6 +320,74 @@
       "heightMap": {
         "src": "../models/baine-shoulder-height.png",
         "mm": 0.4471
+      }
+    },
+    {
+      "id": "baine-chest",
+      "part": "Байн · Нагрудник",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "polys": "8.1k граней · 7.6k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь CHEST. 8 142 граней (7 586 квадов + 556 треугольников, квадов 93.2%), лимит 8 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Нагрудник-халтер: кожаные чашки с бирюзовыми вставками, металлическая окантовка и ошейник под мордой. Мультивью: спереди, сзади. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo (металл не зажат). Height из улучшенной нормали (±0.46 мм). Посажен на тело в «Сборке».",
+      "source": "Tripo 8138d628",
+      "yaw": 0,
+      "height": 0.62,
+      "quads": true,
+      "parts": [
+        "../models/baine-chest.glb"
+      ],
+      "bytes": 57749028,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 8 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "8138d628",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "../refs/baine-chest-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "../refs/baine-chest-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-chest-height.png",
+        "mm": 0.4594
+      }
+    },
+    {
+      "id": "baine-glove",
+      "part": "Байн · Наруч",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "polys": "3.3k граней · 1.6k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь GLOVE. 3 281 граней (1 648 квадов + 1 633 треугольников, квадов 50.2%), лимит 2 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Наруч с бирюзовым камнем и меховая манжета на плечо. Мультивью: спереди, сзади (проект 728acec6). Правый; левый в «Сборке» — зеркальная копия. Посажен на руку: наруч и манжета подогнаны по руке тела (масштаб, поворот, сплющивание), 86 внутренних треугольников убрано. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.68 мм).",
+      "source": "Tripo 728acec6",
+      "yaw": 0,
+      "height": 0.532,
+      "quads": true,
+      "parts": [
+        "../models/baine-glove.glb"
+      ],
+      "bytes": 49652108,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 2 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "728acec6",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "../refs/baine-glove-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "../refs/baine-glove-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-glove-height.png",
+        "mm": 0.6782699999999999
       }
     }
   ]

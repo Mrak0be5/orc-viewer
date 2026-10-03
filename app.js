@@ -383,7 +383,7 @@ async function loadModel(entry) {
       part.name = a.name || e.id;
       part.userData.label = a.label || e.part;
       part.position.fromArray(a.pos || [0, 0, 0]);
-      part.rotation.set(...(a.rot || [0, 0, 0]).map(THREE.MathUtils.degToRad));
+      part.rotation.set(...(a.rot || [0, 0, 0]).map(THREE.MathUtils.degToRad), 'ZYX');   // = Blender Euler 'XYZ' (asm/assemble.py)
       part.scale.setScalar(a.scale || 1);
       if (a.mirror) {   // left-hand copy of a right-hand part: reflect the placed part across x = 0
         part.updateMatrix();
