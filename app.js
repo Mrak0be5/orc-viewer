@@ -110,7 +110,57 @@ const MODES = [
   { id: 'metal', key: '0', label: 'Metalness', make: (m) => dataMaterial(m.metalnessMap, new THREE.Vector4(0, 0, 1, 0), m.metalness, m.metalness) },
   { id: 'uv', key: 'q', label: 'UV-чекер', make: () => new THREE.MeshBasicMaterial({ map: CHECKER, toneMapped: false }) },
   { id: 'facets', key: 'w', label: 'Грани (flat)', make: () => new THREE.MeshStandardMaterial({ color: 0xb8b2aa, roughness: 0.7, flatShading: true }) },
+  { id: 'ao', key: 'a', label: 'AO', make: (m) => dataMaterial(m.aoMap, new THREE.Vector4(1, 0, 0, 0), 1) },
+  { id: 'height', key: 'h', label: 'Height', make: () => dataMaterial(heightTex, new THREE.Vector4(1, 0, 0, 0), 0.5) },
+  { id: 'displace', key: 'd', label: 'Дисплейсмент', make: (m) => new THREE.MeshStandardMaterial({
+    color: 0xb8b2aa, roughness: 0.65, metalness: 0, displacementMap: heightTex, ...dispParams(),
+    normalMap: useNormalMap() ? m.userData.normalMap : null, normalScale: m.normalScale ? m.normalScale.clone() : new THREE.Vector2(1, 1) }) },
 ];
+// Height map (entry.heightMap: { src, mm } — zero level 0.5, 1.0 = +mm). Displacement preview runs on a
+// 4× midpoint-subdivided copy of the mesh; the relief is a few millimetres, so it can be exaggerated.
+let heightTex = null;
+const dispExag = () => +$('#disp-exag').value;
+function dispParams() {
+  const mm = (current && current.heightMap && current.heightMap.mm) || 0, h = mm / 1000 * dispExag();
+  return { displacementScale: 2 * h, displacementBias: -h };
+}
+function subdivide(g) {
+  const idx = g.index.array, n = g.attributes.position.count;
+  const names = ['position', 'normal', 'uv', 'tangent'].filter((k) => g.attributes[k]);
+  const src = names.map((k) => g.attributes[k]), cap = n + idx.length;
+  const dst = src.map((a) => new Float32Array(cap * a.itemSize));
+  src.forEach((a, i) => { for (let v = 0; v < n; v++) for (let c = 0; c < a.itemSize; c++) dst[i][v * a.itemSize + c] = a.getComponent(v, c); });
+  const edges = new Map(), out = new Uint32Array(idx.length * 4);
+  let count = n, o = 0;
+  const mid = (a, b) => {
+    const key = a < b ? a * cap + b : b * cap + a;
+    let v = edges.get(key);
+    if (v !== undefined) return v;
+    v = count++; edges.set(key, v);
+    src.forEach((attr, i) => {
+      const s = attr.itemSize, d = dst[i];
+      for (let c = 0; c < s; c++) d[v * s + c] = (d[a * s + c] + d[b * s + c]) / 2;
+      if (names[i] === 'normal') { const l = Math.hypot(d[v * 3], d[v * 3 + 1], d[v * 3 + 2]) || 1; for (let c = 0; c < 3; c++) d[v * 3 + c] /= l; }
+    });
+    return v;
+  };
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2], ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+    out.set([a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca], o); o += 12;
+  }
+  const r = new THREE.BufferGeometry();
+  names.forEach((k, i) => r.setAttribute(k, new THREE.BufferAttribute(dst[i].slice(0, count * src[i].itemSize), src[i].itemSize)));
+  r.setIndex(new THREE.BufferAttribute(out, 1));
+  return r;
+}
+function setDisplaceGeometry(on) {
+  for (const mesh of meshes) {
+    const u = mesh.userData;
+    if (!u.baseGeom) u.baseGeom = mesh.geometry;
+    if (on && !u.denseGeom) u.denseGeom = subdivide(subdivide(u.baseGeom));
+    mesh.geometry = on ? u.denseGeom : u.baseGeom;
+  }
+}
 let mode = 'pbr';
 const meshes = [];
 const modeCache = new Map(); // mesh.uuid + mode -> material
@@ -150,7 +200,9 @@ function quadLines(mesh) {
 }
 
 function applyMode(id) {
+  if ((id === 'height' || id === 'displace') && !heightTex) id = 'pbr';
   mode = id;
+  setDisplaceGeometry(id === 'displace');
   for (const mesh of meshes) {
     const orig = mesh.userData.orig;
     if (id === 'pbr') { mesh.material = MODES[0].make(orig); continue; }
@@ -159,7 +211,11 @@ function applyMode(id) {
     if (!modeCache.has(k)) modeCache.set(k, MODES.find((m) => m.id === id).make(orig));
     mesh.material = modeCache.get(k);
   }
-  for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.mode === id);
+  for (const b of document.querySelectorAll('#modes button')) {
+    b.classList.toggle('on', b.dataset.mode === id);
+    if (b.dataset.mode === 'height' || b.dataset.mode === 'displace') b.disabled = !heightTex;
+  }
+  $('#disp-box').hidden = !heightTex;
   applyOverlay();
 }
 
@@ -238,6 +294,11 @@ async function loadModel(entry) {
   markNav();
   history.replaceState(null, '', `?m=${entry.id}`);
   root.clear(); meshes.length = 0; modeCache.clear();
+  if (heightTex) { heightTex.dispose(); heightTex = null; }
+  if (entry.heightMap) {
+    heightTex = await new THREE.TextureLoader().loadAsync(entry.heightMap.src);
+    heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true;
+  }
   const buffer = await fetchParts(entry.parts, entry.bytes);
   setProgress(1, 'Распаковка…');
   const gltf = await loader.parseAsync(buffer, '');
@@ -414,6 +475,7 @@ function fillTextures() {
       if (t && !seen.has(t.uuid)) seen.set(t.uuid, { t, name: TEX_NAMES[k] });
     }
   }
+  if (heightTex) seen.set(heightTex.uuid, { t: heightTex, name: `Height (±${current.heightMap.mm} мм)` });
   for (const { t, name } of seen.values()) {
     const fig = document.createElement('figure');
     const cv = document.createElement('canvas');
@@ -545,6 +607,10 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 // ---------- controls ----------
 $('#wire-overlay').onchange = applyOverlay;
 $('#normal-map-on').onchange = () => applyMode(mode);
+$('#disp-exag').oninput = () => {
+  $('#disp-exag-v').textContent = `×${dispExag()}`;
+  for (const m of modeCache.values()) if (m.displacementMap) Object.assign(m, dispParams());
+};
 $('#scale21').onchange = () => { normalize(); setCamera('front'); };
 $('#ruler').onchange = (e) => { ruler.visible = e.target.checked; };
 $('#grid-on').onchange = (e) => { grid.visible = e.target.checked; };

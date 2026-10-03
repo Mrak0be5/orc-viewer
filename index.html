@@ -59,7 +59,7 @@
   </section>
 
   <section>
-    <h2>Шейдер <small>клавиши 1–0, Q, W</small></h2>
+    <h2>Шейдер <small>клавиши 1–0, Q, W, A, H, D</small></h2>
     <div id="modes" class="grid"></div>
   </section>
 
@@ -67,6 +67,7 @@
     <h2>Наложения</h2>
     <label><input type="checkbox" id="wire-overlay"> Сетка поверх (E)</label>
     <label><input type="checkbox" id="normal-map-on" checked> Normal map в PBR/глине</label>
+    <label id="disp-box" hidden>Дисплейсмент, усиление <input type="range" id="disp-exag" min="1" max="20" step="1" value="1"> <span id="disp-exag-v">×1</span></label>
     <label><input type="checkbox" id="scale21" checked> Реальный масштаб (тело 2.10 м)</label>
     <label><input type="checkbox" id="ruler" checked> Линейка роста</label>
     <label><input type="checkbox" id="grid-on" checked> Пол-сетка</label>
