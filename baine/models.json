@@ -3,11 +3,11 @@
     {
       "id": "baine-full",
       "part": "Байн · Сборка",
-      "label": "Полная сборка: тело, волосы, рога",
-      "polys": "≈33.9k граней",
+      "label": "Полная сборка: тело, волосы, рога, нагрудник",
+      "polys": "≈42.0k граней",
       "date": "2026-10-03",
       "note": "Полная сборка Байн: каждая деталь — отдельный GLB из models.json, поставленный в пространство тела (м, Y вверх, лицом к +Z; rot в градусах XYZ). Посадка подобрана рендерами в Blender (asm/assemble.py). Детали включаются и выключаются в «Детали сборки»; посадку можно поправить в «✎ Редактировать» и сохранить.",
-      "source": "Tripo, 4367fabf, 107ce37e, d13bfe60",
+      "source": "Tripo, 4367fabf, 107ce37e, d13bfe60, 8138d628",
       "yaw": 0,
       "height": 2.3,
       "quads": true,
@@ -15,7 +15,7 @@
         "top": 0.12,
         "span": 0.36
       },
-      "bytes": 72533788,
+      "bytes": 212770504,
       "assembly": [
         {
           "id": "baine-body",
@@ -43,10 +43,21 @@
             0
           ],
           "scale": 1.0
+        },
+        {
+          "id": "baine-chest",
+          "name": "Chest",
+          "label": "Нагрудник",
+          "pos": [
+            0,
+            1.434,
+            0.034
+          ],
+          "scale": 1.08
         }
       ],
       "tripo": {
-        "settings": "3 детали из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
+        "settings": "4 детали из Tripo, каждая — Smart Mesh P2.0 → Smart UV → Texture 8K → PBR",
         "inputs": [
           {
             "slot": "Тело · Спереди",
@@ -79,6 +90,14 @@
           {
             "slot": "Рога · Сзади",
             "src": "../refs/baine-horns-back.jpg"
+          },
+          {
+            "slot": "Нагрудник · Спереди",
+            "src": "../refs/baine-chest-front.jpg"
+          },
+          {
+            "slot": "Нагрудник · Сзади",
+            "src": "../refs/baine-chest-back.jpg"
           }
         ]
       }
@@ -122,12 +141,80 @@
       }
     },
     {
+      "id": "baine-chest",
+      "part": "Байн · Нагрудник",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "polys": "8.1k граней · 7.6k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь CHEST. 8 142 граней (7 586 квадов + 556 треугольников, квадов 93.2%), лимит 8 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Нагрудник-халтер: кожаные чашки с бирюзовыми вставками, металлическая окантовка и ошейник под мордой. Мультивью: спереди, сзади. Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo (металл не зажат). Height из улучшенной нормали (±0.46 мм). Посажен на тело в «Сборке».",
+      "source": "Tripo 8138d628",
+      "yaw": 0,
+      "height": 0.62,
+      "quads": true,
+      "parts": [
+        "../models/baine-chest.glb"
+      ],
+      "bytes": 57749028,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 8 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "8138d628",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "../refs/baine-chest-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "../refs/baine-chest-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-chest-height.png",
+        "mm": 0.4594
+      }
+    },
+    {
+      "id": "baine-horns",
+      "part": "Байн · Рога",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
+      "polys": "1.5k граней · 1.1k квадов",
+      "date": "2026-10-03",
+      "note": "Тауренша Байн, деталь HORNS. 1 491 граней (1 108 квадов + 383 треугольников, квадов 74.3%), лимит 1 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Рога на перемычке с бирюзовыми кольцами, бусинами и красно-синими перьями. Мультивью: спереди, сзади (проект d13bfe60). Размах 0,8 м, посажены на голову в «Сборке». Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.50 мм).",
+      "source": "Tripo d13bfe60",
+      "yaw": 0,
+      "height": 0.37,
+      "quads": true,
+      "parts": [
+        "../models/baine-horns.glb"
+      ],
+      "bytes": 41638456,
+      "tripo": {
+        "settings": "Smart Mesh P2.0, мультивью, квады, 1 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
+        "task": "d13bfe60",
+        "inputs": [
+          {
+            "slot": "Спереди",
+            "src": "../refs/baine-horns-front.jpg"
+          },
+          {
+            "slot": "Сзади",
+            "src": "../refs/baine-horns-back.jpg"
+          }
+        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-horns-height.png",
+        "mm": 0.4985
+      }
+    },
+    {
       "id": "baine-hair",
       "part": "Байн · Волосы",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR + AO + height",
       "polys": "8.5k граней · 6.5k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь HAIR. 8 463 граней (6 466 квадов + 1 997 треугольников, квадов 76.4%), лимит 7 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Две косы с медными кольцами и красно-синими перьями. Мультивью: спереди, сбоку, сзади (проект 107ce37e). PBR-карты Tripo 4K: normal, roughness, metallic (металл — только медные кольца). Масштаб условный (высота 0,85 м), под голову тела подгоню при сборке.",
+      "note": "Тауренша Байн, деталь HAIR. 8 463 граней (6 466 квадов + 1 997 треугольников, квадов 76.4%), лимит 7 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Две косы с медными кольцами и красно-синими перьями. Мультивью: спереди, сбоку, сзади (проект 107ce37e). Посажены на голову в «Сборке». Normal 8K PNG: нормаль Tripo со сглаженными «гребнями» + детали DeepBump из 8K-альбедо. ORM PNG 4K: R — AO из Cycles (256 spp), G — roughness Tripo, B — metallic Tripo. Height из улучшенной нормали (±0.65 мм).",
       "source": "Tripo 107ce37e",
       "yaw": 0,
       "height": 0.85,
@@ -135,9 +222,9 @@
       "parts": [
         "../models/baine-hair.glb"
       ],
-      "bytes": 8564724,
+      "bytes": 57329172,
       "tripo": {
-        "settings": "Smart Mesh P2.0, мультивью, квады, 7 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic)",
+        "settings": "Smart Mesh P2.0, мультивью, квады, 7 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic) → normal+DeepBump, AO, height — локально",
         "task": "107ce37e",
         "inputs": [
           {
@@ -153,36 +240,10 @@
             "src": "../refs/baine-hair-back.jpg"
           }
         ]
-      }
-    },
-    {
-      "id": "baine-horns",
-      "part": "Байн · Рога",
-      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR",
-      "polys": "1.5k граней · 1.1k квадов",
-      "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь HORNS. 1 491 граней (1 108 квадов + 383 треугольников, квадов 74.3%), лимит 1 500. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). Рога на перемычке с бирюзовыми кольцами, бусинами и красно-синими перьями. Мультивью: спереди, сзади (проект d13bfe60). PBR-карты Tripo 4K: normal, roughness, metallic (металл — только кольца). Размах 0,8 м, посажены на голову в «Сборке».",
-      "source": "Tripo d13bfe60",
-      "yaw": 0,
-      "height": 0.37,
-      "quads": true,
-      "parts": [
-        "../models/baine-horns.glb"
-      ],
-      "bytes": 7915216,
-      "tripo": {
-        "settings": "Smart Mesh P2.0, мультивью, квады, 1 500 → Smart UV → Texture 8K → PBR (normal, roughness, metallic)",
-        "task": "d13bfe60",
-        "inputs": [
-          {
-            "slot": "Спереди",
-            "src": "../refs/baine-horns-front.jpg"
-          },
-          {
-            "slot": "Сзади",
-            "src": "../refs/baine-horns-back.jpg"
-          }
-        ]
+      },
+      "heightMap": {
+        "src": "../models/baine-hair-height.png",
+        "mm": 0.6461
       }
     }
   ]

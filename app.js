@@ -97,8 +97,55 @@ function dataMaterial(tex, mask, fallback = 1, factor = 1) {
 
 // ---------- shading modes ----------
 const useNormalMap = () => $('#normal-map-on').checked;
+// PBR mode = a copy of the glTF material with every map the model has; each map has its own checkbox in #pbr-maps.
+// Without its map, roughness falls back to 0.6 and metalness to 0 (the glTF factors are 1 when a map drives them).
+const PBR_MAPS = [
+  { key: 'map', id: 'pm-map', label: 'BaseColor' },
+  { key: 'normalMap', id: 'normal-map-on', label: 'Normal', hint: 'и в глине/matcap' },
+  { key: 'roughnessMap', id: 'pm-rough', label: 'Roughness' },
+  { key: 'metalnessMap', id: 'pm-metal', label: 'Metalness' },
+  { key: 'aoMap', id: 'pm-ao', label: 'AO' },
+  { key: 'displacementMap', id: 'pm-disp', label: 'Displacement', hint: 'из Height, геометрия ×16' },
+  { key: 'emissiveMap', id: 'pm-emissive', label: 'Emissive' },
+];
+const mapSource = (m, key) => (key === 'normalMap' ? m.userData.normalMap : key === 'displacementMap' ? m.userData.heightTex : m[key]) || null;
+const mapOn = (key) => { const el = $('#' + PBR_MAPS.find((d) => d.key === key).id); return !!el && el.checked && !el.disabled; };
+function pbrMaterial(orig) {
+  let p = orig.userData.pbr;
+  if (!p) {
+    const ud = orig.userData; orig.userData = {}; // Material.clone JSON-copies userData, which holds textures
+    p = orig.clone(); orig.userData = ud; ud.pbr = p; p.userData.src = orig;
+  }
+  for (const d of PBR_MAPS) p[d.key] = mapOn(d.key) ? mapSource(orig, d.key) : null;
+  p.roughness = p.roughnessMap || !orig.roughnessMap ? orig.roughness : 0.6;
+  p.metalness = p.metalnessMap || !orig.metalnessMap ? orig.metalness : 0;
+  if (p.emissive) p.emissive.copy(p.emissiveMap || !orig.emissiveMap ? orig.emissive : new THREE.Color(0));
+  Object.assign(p, p.displacementMap ? dispParams(orig) : { displacementScale: 1, displacementBias: 0 });
+  p.needsUpdate = true;
+  return p;
+}
+function fillPbrMaps() {
+  const mats = meshes.flatMap((o) => [].concat(o.userData.orig));
+  for (const d of PBR_MAPS) {
+    const has = mats.filter((m) => mapSource(m, d.key)).length, el = $('#' + d.id);
+    el.disabled = !has;
+    el.parentElement.classList.toggle('off', !has);
+    el.parentElement.querySelector('small').textContent = !has ? 'нет в модели' : has < mats.length ? `${has} из ${mats.length} материалов` : (d.hint || '');
+  }
+}
+{
+  const box = $('#pbr-maps');
+  for (const d of PBR_MAPS) {
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="checkbox" id="${d.id}" checked> ${d.label} <small></small>`;
+    l.querySelector('input').onchange = () => applyMode(mode);
+    box.appendChild(l);
+  }
+  $('#pbr-all').onclick = () => { for (const d of PBR_MAPS) $('#' + d.id).checked = true; applyMode(mode); };
+  $('#pbr-none').onclick = () => { for (const d of PBR_MAPS) $('#' + d.id).checked = false; applyMode(mode); };
+}
 const MODES = [
-  { id: 'pbr', key: '1', label: 'PBR', make: (m) => { m.normalMap = useNormalMap() ? m.userData.normalMap : null; m.needsUpdate = true; return m; } },
+  { id: 'pbr', key: '1', label: 'PBR', make: (m) => (Array.isArray(m) ? m.map(pbrMaterial) : pbrMaterial(m)) },
   { id: 'albedo', key: '2', label: 'Albedo (без света)', make: (m) => new THREE.MeshBasicMaterial({ map: m.map, color: m.color, toneMapped: false }) },
   { id: 'lit-color', key: '3', label: 'Не-PBR (Lambert)', make: (m) => new THREE.MeshLambertMaterial({ map: m.map, color: m.color }) },
   { id: 'clay', key: '4', label: 'Глина', make: (m) => new THREE.MeshStandardMaterial({ color: 0xb8b2aa, roughness: 0.65, metalness: 0, normalMap: useNormalMap() ? m.userData.normalMap : null, normalScale: m.normalScale ? m.normalScale.clone() : new THREE.Vector2(1, 1) }) },
@@ -205,7 +252,7 @@ function applyMode(id) {
   const height = hasHeight();
   if ((id === 'height' || id === 'displace') && !height) id = 'pbr';
   mode = id;
-  setDisplaceGeometry(id === 'displace');
+  setDisplaceGeometry(id === 'displace' || (id === 'pbr' && mapOn('displacementMap')));
   for (const mesh of meshes) {
     const orig = mesh.userData.orig;
     if (id === 'pbr') { mesh.material = MODES[0].make(orig); continue; }
@@ -245,7 +292,7 @@ function applyOverlay() {
     }
     let o = mesh.userData.overlay;
     if (on && !o) {
-      o = new THREE.Mesh(mesh.geometry, overlayMat);
+      o = new THREE.Mesh(mesh.userData.baseGeom || mesh.geometry, overlayMat);
       o.renderOrder = 1;
       mesh.add(o);
       mesh.userData.overlay = o;
@@ -350,6 +397,7 @@ async function loadModel(entry) {
   root.add(model);
   rawBox = new THREE.Box3().setFromObject(model);
   normalize();
+  fillPbrMaps();
   applyMode(mode);
   fillStats(gltf, entry);
   fillPolys(gltf);
@@ -428,7 +476,7 @@ function fillStats(gltf, entry) {
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     meshesN++;
-    const g = o.geometry;
+    const g = o.userData.baseGeom || o.geometry; // not the subdivided displacement copy
     verts += g.attributes.position.count;
     tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
     for (const m of [].concat(o.material)) {
@@ -471,7 +519,7 @@ function meshCounts(obj) {
   let tris = 0, verts = 0, quads = 0, lone = 0, faces = 0, xq = 0, xt = 0;
   obj.traverse((o) => {
     if (!o.isMesh) return;
-    const g = o.geometry;
+    const g = o.userData.baseGeom || o.geometry; // not the subdivided displacement copy
     verts += g.attributes.position.count;
     tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
     const q = pairQuads(g);
@@ -656,10 +704,10 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 
 // ---------- controls ----------
 $('#wire-overlay').onchange = applyOverlay;
-$('#normal-map-on').onchange = () => applyMode(mode);
 $('#disp-exag').oninput = () => {
   $('#disp-exag-v').textContent = `×${dispExag()}`;
   for (const [k, m] of modeCache) if (m.displacementMap) Object.assign(m, dispParams(m.userData.src));
+  for (const o of meshes) for (const m of [].concat(o.userData.orig)) if (m.userData.pbr?.displacementMap) Object.assign(m.userData.pbr, dispParams(m));
 };
 $('#scale21').onchange = () => { normalize(); setCamera('front'); };
 $('#ruler').onchange = (e) => { ruler.visible = e.target.checked; };
@@ -755,7 +803,10 @@ function repivot(part) {
     box.union(o.geometry.boundingBox.clone().applyMatrix4(inv.clone().multiply(o.matrixWorld)));
   });
   const c = box.getCenter(new THREE.Vector3());
-  if (part.isMesh) part.geometry.translate(-c.x, -c.y, -c.z);   // overlays / quad lines share this geometry
+  if (part.isMesh) {   // overlays / quad lines share this geometry; the displacement copy moves with it
+    const u = part.userData;
+    for (const g of new Set([part.geometry, u.baseGeom, u.denseGeom].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
+  }
   else for (const ch of part.children) ch.position.sub(c);
   part.position.add(c.clone().multiply(part.scale).applyQuaternion(part.quaternion));
   // quad-line / overlay geometries share the moved vertex buffer but keep their own (now stale) bounds
@@ -908,6 +959,7 @@ async function exportGLB() {
   const hidden = [];
   scene.traverse((o) => { if ((o.isLineSegments || o.userData.isOverlay || o === o.parent?.userData.overlay) && o.visible) { o.visible = false; hidden.push(o); } });
   for (const m of meshes) m.material = m.userData.orig;
+  setDisplaceGeometry(false);
   try {
     const glb = await new GLTFExporter().parseAsync(edit.parts, { binary: true, maxTextureSize: 4096 });
     download(new Blob([glb], { type: 'model/gltf-binary' }), `${current.id}-edited.glb`);
