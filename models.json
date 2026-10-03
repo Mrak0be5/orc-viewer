@@ -741,10 +741,10 @@
     {
       "id": "baine-body",
       "part": "Байн · Тело",
-      "label": "Tripo Smart Mesh P2.0 + текстура 4K",
+      "label": "Tripo Smart Mesh P2.0 + текстура 8K + PBR",
       "polys": "23.9k граней · 17.4k квадов",
       "date": "2026-10-03",
-      "note": "Тауренша Байн, деталь BODY. 23 928 граней (17 432 квадов + 6 496 треугольников, квадов 72.9%), лимит 20 000. Текстура 4K из Tripo (Smart UV → Texture 8K по видам). v6: Smart Mesh 20000 квадов по 3 ракурсам (фронт, справа — реф ChatGPT Image 2.5, спина), исправлены глаза; Smart UV, цвет 8K + PBR-карты Tripo: normal, roughness, metallic (4K)",
+      "note": "Тауренша Байн, деталь BODY. 23 928 граней (17 432 квадов + 6 496 треугольников, квадов 72.9%), лимит 20 000. Текстура 8K из Tripo (Smart UV → Texture 8K по видам). v6: Smart Mesh 20000 квадов по 3 ракурсам (фронт, справа — реф ChatGPT Image 2.5, спина), исправлены глаза; Smart UV, цвет 8K + PBR-карты Tripo: normal, roughness, metallic (4K)",
       "source": "Tripo 4367fabf",
       "yaw": 0,
       "height": 2.3,
@@ -752,9 +752,9 @@
       "parts": [
         "models/baine-body.glb"
       ],
-      "bytes": 10636324,
+      "bytes": 11075096,
       "tripo": {
-        "settings": "Smart Mesh P2.0, мультивью, квады, 20 000 → Smart UV → Texture 8K",
+        "settings": "Smart Mesh P2.0, мультивью, квады, 20 000 → Smart UV → Texture 8K → PBR (normal, roughness, metallic)",
         "task": "4367fabf",
         "inputs": [
           {
