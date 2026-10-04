@@ -68,7 +68,8 @@
             1.434,
             0.034
           ],
-          "scale": 1.08
+          "scale": 1.08,
+          "wrap": "../models/baine-chest-wrap.glb"
         },
         {
           "id": "baine-shoulder",
@@ -85,7 +86,8 @@
             -3.04,
             4.34,
             -12.16
-          ]
+          ],
+          "wrap": "../models/baine-shoulder-wrap.glb"
         },
         {
           "id": "baine-shoulder",
@@ -103,7 +105,8 @@
             -3.04,
             4.34,
             -12.16
-          ]
+          ],
+          "wrap": "../models/baine-shoulder-wrap-L.glb"
         },
         {
           "id": "baine-glove",
@@ -115,7 +118,8 @@
             -0.0683
           ],
           "scale": 1.0,
-          "group": "Перчатки"
+          "group": "Перчатки",
+          "wrap": "../models/baine-glove-wrap.glb"
         },
         {
           "id": "baine-glove",
@@ -128,7 +132,8 @@
           ],
           "scale": 1.0,
           "mirror": true,
-          "group": "Перчатки"
+          "group": "Перчатки",
+          "wrap": "../models/baine-glove-wrap-L.glb"
         },
         {
           "id": "baine-belt",
@@ -144,7 +149,8 @@
             0,
             0
           ],
-          "scale": 1.0171
+          "scale": 1.0171,
+          "wrap": "../models/baine-belt-wrap.glb"
         },
         {
           "id": "baine-legs",
@@ -155,7 +161,8 @@
             0.55,
             0
           ],
-          "scale": 0.92
+          "scale": 0.92,
+          "wrap": "../models/baine-legs-wrap.glb"
         },
         {
           "id": "baine-boot",
@@ -167,7 +174,8 @@
             -0.045
           ],
           "scale": 1.1,
-          "group": "Манжеты"
+          "group": "Манжеты",
+          "wrap": "../models/baine-boot-wrap.glb"
         },
         {
           "id": "baine-boot",
@@ -180,7 +188,8 @@
           ],
           "scale": 1.1,
           "mirror": true,
-          "group": "Манжеты"
+          "group": "Манжеты",
+          "wrap": "../models/baine-boot-wrap-L.glb"
         },
         {
           "id": "baine-tail",

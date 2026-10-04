@@ -551,7 +551,7 @@ async function loadModel(entry) {
   $('#model-title').textContent = `${entry.part || ''} · ${entry.label || entry.title}`;
   $('#model-note').textContent = entry.note || '';
   markNav();
-  history.replaceState(null, '', `?m=${entry.id}`);
+  syncFitUi();
   setHqBadge('');
   for (const t of liveTextures()) t.dispose();
   for (const m of modeCache.values()) m.dispose();
@@ -572,6 +572,7 @@ async function loadModel(entry) {
       part.add(loaded[i]);
       part.name = a.name || e.id;
       part.userData.label = a.label || e.part;
+      if (a.wrap) part.userData.wrap = a.wrap;
       part.position.fromArray(a.pos || [0, 0, 0]);
       part.rotation.set(...(a.rot || [0, 0, 0]).map(THREE.MathUtils.degToRad), 'ZYX');   // = Blender Euler 'XYZ' (asm/assemble.py)
       part.scale.setScalar(a.scale || 1);
@@ -597,6 +598,8 @@ async function loadModel(entry) {
   gscene.rotation.y = THREE.MathUtils.degToRad(entry.yaw || 0);
   model.add(gscene);
   root.add(model);
+  if (fitVariant !== 'manual') await Promise.all(gscene.children.filter((p) => p.userData.wrap).map(applyGeom));
+  if (token !== loadToken) return;
   prepareCuts(gscene);
   model.updateMatrixWorld(true);
   model.traverse((o) => { if (o.isSkinnedMesh) { o.skeleton.update(); o.computeBoundingBox(); o.computeBoundingSphere(); } });   // bounds from the posed bones, not identity ones
@@ -720,6 +723,8 @@ function fillAssembly(gscene) {
   if (!box) return;
   box.hidden = !current.assembly;
   $('#asm-parts').innerHTML = '';
+  const fit = $('#asm-fit');
+  if (fit) fit.hidden = !(current.assembly || []).some((a) => a.wrap);
   if (!current.assembly) return;
   for (const p of gscene.children) {
     const l = document.createElement('label');
@@ -1126,7 +1131,7 @@ function repivot(part) {
   if (part.isMesh) {   // overlays / quad lines share this geometry; the displacement copy moves with it
     const u = part.userData;
     const d = u.baseGeom && denseOf.get(u.baseGeom);
-    for (const g of new Set([part.geometry, u.baseGeom, d?.geom].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
+    for (const g of new Set([part.geometry, u.baseGeom, d?.geom, ...Object.values(u.geoms || {})].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
     u.shift = (u.shift || new THREE.Vector3()).sub(c);   // a later Tripo geometry swap gets the same shift
   }
   else for (const ch of part.children) ch.position.sub(c);
@@ -1514,9 +1519,12 @@ function removePart(p) {
   markDirty();
 }
 
-// ---------- edit mode: «Как из Tripo» ----------
+// ---------- geometry variants: «Как из Tripo» and the Blender fit ----------
 // entry.raw = { src, offset } is the part's geometry exactly as Tripo made it (same UVs, no textures). Parts deformed to fit
 // the body (chest conformed, glove tubes refitted) switch back to it and forth; textures and placement stay as they are.
+// An assembly item's wrap = src is a second fit of the same mesh made in Blender (Shrinkwrap + Surface Deform,
+// baine/wrap/wrap_fit.py), one file per item since a mirrored copy is fitted in its own place. «Подгонка к телу» in the
+// assembly box picks it for every item that has one; «Как из Tripo» on a part wins over both fits.
 const rawCache = new Map();   // src -> Promise<[geometry per mesh]>
 function loadRaw(src) {
   return cached(rawCache, src, async () => {
@@ -1528,25 +1536,28 @@ function loadRaw(src) {
     return out;
   });
 }
-async function setRaw(part, on) {
-  const e = partEntry(part);
-  if (!e || !e.raw) return;
-  const list = partMeshes(part);
-  if (on && list.some((m) => !m.userData.rawGeom)) {
-    setStatus('Загружаю геометрию из Tripo…');
-    const geos = await loadRaw(e.raw.src);
+const FITS = { manual: 'ручная', wrap: 'Blender: Shrinkwrap + Surface Deform' };
+let fitVariant = (() => { const v = new URLSearchParams(location.search).get('fit') || localStorage.getItem('orc-fit'); return v in FITS ? v : 'manual'; })();
+const geomKind = (part) => (part.userData.raw ? 'raw' : fitVariant === 'wrap' && part.userData.wrap ? 'wrap' : 'fit');
+async function applyGeom(part) {
+  const kind = geomKind(part), list = partMeshes(part);
+  for (const m of list) { const u = m.userData; if (!u.geoms) u.geoms = { fit: u.baseGeom || m.geometry }; }
+  if (kind !== 'fit' && list.some((m) => !m.userData.geoms[kind])) {
+    const e = partEntry(part);
+    const src = kind === 'raw' ? e.raw.src : part.userData.wrap, offset = kind === 'raw' ? e.raw.offset : null;
+    setStatus(kind === 'raw' ? 'Загружаю геометрию из Tripo…' : 'Загружаю подгонку из Blender…');
+    const geos = await loadRaw(src);
     for (const m of list) {
-      const u = m.userData, src = geos[u.srcIdx];
-      if (!src || u.rawGeom) continue;
-      const off = new THREE.Vector3(...(e.raw.offset || [0, 0, 0])).add(u.shift || new THREE.Vector3());
-      u.rawGeom = src.clone().translate(off.x, off.y, off.z);
+      const u = m.userData, g = geos[u.srcIdx];
+      if (!g || u.geoms[kind]) continue;
+      const off = new THREE.Vector3(...(offset || [0, 0, 0])).add(u.shift || new THREE.Vector3());
+      u.geoms[kind] = g.clone().translate(off.x, off.y, off.z);
     }
   }
+  if (geomKind(part) !== kind) return;   // switched again while loading: the later call does the swap
   for (const m of list) {
     const u = m.userData;
-    if (!u.rawGeom) continue;
-    if (!u.fitGeom) u.fitGeom = u.baseGeom || m.geometry;
-    const g = on ? u.rawGeom : u.fitGeom, prev = u.baseGeom || m.geometry;
+    const g = u.geoms[kind] || u.geoms.fit, prev = u.baseGeom || m.geometry;
     if (g === prev) continue;
     u.baseGeom = g; m.geometry = g;
     if (u.overlay) u.overlay.geometry = g;
@@ -1557,11 +1568,35 @@ async function setRaw(part, on) {
       if (q) { q.visible = old.visible; q.material = old.material; m.remove(old); m.add(q); u.quadLines = q; }
     }
   }
-  part.userData.raw = on;
+}
+function refreshGeom() {
   applyMode(mode);
   fillPolys({ scene: curScene });
-  if (edit.sel === part || edit.sel === part.userData.partner) fillEditFields();
+  if (edit.sel) fillEditFields();
+}
+async function setRaw(part, on) {
+  const e = partEntry(part);
+  if (!e || !e.raw) return;
+  part.userData.raw = on;
+  try { await applyGeom(part); } catch (err) { part.userData.raw = !on; throw err; }
+  refreshGeom();
   setStatus(on ? `${partLabel(part)}: геометрия как из Tripo (без подгонки к телу).` : `${partLabel(part)}: подгонка к телу возвращена.`);
+}
+async function setFit(v) {
+  if (!(v in FITS)) return;
+  fitVariant = v;
+  localStorage.setItem('orc-fit', v);
+  syncFitUi();
+  if (!curScene) return;
+  const parts = curScene.children.filter((p) => p.userData.wrap);
+  setStatus(`Подгонка: ${FITS[v]}…`);
+  await Promise.all(parts.map(applyGeom));
+  refreshGeom(); markDirty();
+  setStatus(`Подгонка к телу: ${FITS[v]}.`);
+}
+function syncFitUi() {
+  for (const r of document.querySelectorAll('#asm-fit input')) r.checked = r.value === fitVariant;
+  if (current) history.replaceState(null, '', `?m=${current.id}${current.assembly && fitVariant !== 'manual' ? `&fit=${fitVariant}` : ''}`);
 }
 async function toggleRaw() {
   const p = edit.sel;
@@ -1669,6 +1704,7 @@ $('#edit-json').onclick = () => {
   setStatus(`JSON скачан: ${current.id}-placement.json (${Object.keys(data.parts).length} дет.).`);
 };
 $('#edit-raw').onclick = () => toggleRaw().catch(showEditError);
+for (const r of document.querySelectorAll('#asm-fit input')) r.onchange = () => setFit(r.value).catch(showEditError);
 $('#edit-remove').onclick = () => removePart(edit.sel);
 $('#edit-add-btn').onclick = async () => {
   const b = $('#edit-add-btn');
@@ -1786,8 +1822,14 @@ window.viewer = {
     glb: () => exportGLB(),
     add: (id) => addModel(id),
     raw: (on) => edit.sel && setRaw(edit.sel, on),
+    fit: (v) => setFit(v),
+    fits: () => (curScene ? curScene.children.filter((p) => p.userData.wrap) : []).map((p) => {   // per item: shown geometry, its largest offset from the manual fit
+      const m = partMeshes(p)[0], u = m.userData, a = (u.baseGeom || m.geometry).attributes.position.array, f = u.geoms?.fit?.attributes.position.array || a;
+      let d = 0; for (let i = 0; i < a.length; i += 3) d = Math.max(d, Math.hypot(a[i] - f[i], a[i + 1] - f[i + 1], a[i + 2] - f[i + 2]));
+      return { name: p.name, kind: geomKind(p), verts: a.length / 3, maxOffset: +d.toFixed(4), scale: +p.scale.x.toFixed(3) };
+    }),
     remove: () => removePart(edit.sel),
-    state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, raw: !!(edit.sel && edit.sel.userData.raw), parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
+    state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, raw: !!(edit.sel && edit.sel.userData.raw), fit: fitVariant, parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
   },
   mode: (id) => applyMode(id),
   anim: (name, t) => { if (name) playClip(name); if (t !== undefined && anim.cur) seekClip(t); return { clips: anim.actions.map((a) => a.getClip().name), cur: anim.cur && anim.cur.getClip().name }; },

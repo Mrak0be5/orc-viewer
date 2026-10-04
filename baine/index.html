@@ -61,6 +61,12 @@
   </section>
 
   <section id="asm-box" hidden>
+    <div id="asm-fit" hidden>
+      <h2>Подгонка вещей к телу</h2>
+      <label><input type="radio" name="fit" value="manual"> Ручная <small>(посадка рендерами + conform)</small></label>
+      <label><input type="radio" name="fit" value="wrap"> Blender: Shrinkwrap + Surface Deform</label>
+      <p class="hint">Те же меши, UV и текстуры, меняется только форма: в варианте Blender каждая вещь деформируется по клетке (Surface Deform), а клетку Shrinkwrap прижимает к коже с зазором 4 мм. Перья, когти и подвески едут вместе с вещью.</p>
+    </div>
     <h2>Детали сборки</h2>
     <div id="asm-parts" class="checks"></div>
   </section>
