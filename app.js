@@ -175,24 +175,89 @@ const MODES = [
 // recomputed (welded across UV seams) — so the relief shows in the lighting, not only in the silhouette as GPU displacementMap would.
 const hasHeight = () => meshes.some((o) => [].concat(o.userData.orig).some((m) => m.userData.heightTex));
 const dispExag = () => +$('#disp-exag').value;
-const DISP_EDGE = 0.006, DISP_TRIS_MESH = 2.5e6, DISP_TRIS_ALL = 8e6;
-const heightPix = new WeakMap();  // texture -> { w, h, d: Uint8Array (R) }
-function heightPixels(t) {
-  if (!heightPix.has(t)) {
-    const im = t.image, w = im.width, h = im.height, c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
-    const rgba = x.getImageData(0, 0, w, h).data, d = new Uint8Array(w * h);
-    for (let i = 0; i < d.length; i++) d[i] = rgba[i * 4];
-    heightPix.set(t, { w, h, d });
+// The heavy part runs in a small worker pool (the model shows at once with its normal maps, the relief follows): each
+// worker keeps the height pixels per texture and the subdivided + welded copy per mesh, so a new strength only re-displaces.
+const DISP_WORKER = `
+const pix = new Map(), subs = new Map();
+function subdivide(g) {
+  const idx = g.index, n = g.position.length / 3, cap = n + idx.length, names = Object.keys(g).filter((k) => !['index', 'id', 'ids'].includes(k));
+  const size = Object.fromEntries(names.map((k) => [k, g[k].length / n])), dst = {};
+  for (const k of names) { dst[k] = new Float32Array(cap * size[k]); dst[k].set(g[k]); }
+  const pid = new Uint32Array(cap); pid.set(g.id);
+  const edges = new Map(), welded = new Map(), out = new Uint32Array(idx.length * 4);
+  let count = n, o = 0, ids = g.ids;
+  const mid = (a, b) => {
+    const key = a < b ? a * cap + b : b * cap + a;
+    let v = edges.get(key);
+    if (v !== undefined) return v;
+    v = count++; edges.set(key, v);
+    for (const k of names) {
+      const s = size[k], d = dst[k];
+      for (let c = 0; c < s; c++) d[v * s + c] = (d[a * s + c] + d[b * s + c]) / 2;
+      if (k === 'normal') { const l = Math.hypot(d[v * 3], d[v * 3 + 1], d[v * 3 + 2]) || 1; for (let c = 0; c < 3; c++) d[v * 3 + c] /= l; }
+    }
+    const ia = pid[a], ib = pid[b], wk = ia < ib ? ia * 67108864 + ib : ib * 67108864 + ia;   // seam twins share a weld id
+    let w = welded.get(wk); if (w === undefined) { w = ids++; welded.set(wk, w); }
+    pid[v] = w;
+    return v;
+  };
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2], ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+    out.set([a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca], o); o += 12;
   }
-  return heightPix.get(t);
+  const r = { index: out, id: pid.slice(0, count), ids };
+  for (const k of names) r[k] = dst[k].slice(0, count * size[k]);
+  return r;
 }
-function sampleHeight({ w, h, d }, u, v) {  // bilinear, flipY = false: v = 0 is the top row; 0..1
-  const x = Math.min(Math.max(u * w - 0.5, 0), w - 1.001), y = Math.min(Math.max(v * h - 0.5, 0), h - 1.001);
-  const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * w + x0;
-  return ((d[i] * (1 - fx) + d[i + 1] * fx) * (1 - fy) + (d[i + w] * (1 - fx) + d[i + w + 1] * fx) * fy) / 255;
+function weld(P) {   // split (UV-seam) vertices get one id
+  const n = P.length / 3, id = new Uint32Array(n), keyOf = new Map();
+  for (let i = 0; i < n; i++) {
+    const k = Math.round(P[i * 3] * 1e5) + ',' + Math.round(P[i * 3 + 1] * 1e5) + ',' + Math.round(P[i * 3 + 2] * 1e5);
+    let j = keyOf.get(k); if (j === undefined) { j = keyOf.size; keyOf.set(k, j); }
+    id[i] = j;
+  }
+  return { id, ids: keyOf.size };
 }
+onmessage = ({ data: q }) => {
+  if (q.clear) { pix.clear(); subs.clear(); return; }
+  if (q.img) {   // height pixels of one texture, sent once per worker
+    const c = new OffscreenCanvas(q.img.width, q.img.height), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(q.img, 0, 0); q.img.close();
+    const rgba = x.getImageData(0, 0, c.width, c.height).data, d = new Uint8Array(c.width * c.height);
+    for (let i = 0; i < d.length; i++) d[i] = rgba[i * 4];
+    pix.set(q.tex, { w: c.width, h: c.height, d });
+    return;
+  }
+  let g = subs.get(q.sub);
+  if (!g) {
+    g = q.geom; Object.assign(g, weld(g.position));
+    for (let i = 0; i < q.lv; i++) g = subdivide(g);
+    subs.set(q.sub, g);
+  }
+  const { w, h, d } = pix.get(q.tex), P = g.position.slice(), N = g.normal, U = g.uv, n = P.length / 3, idx = g.index;
+  for (let i = 0; i < n; i++) {   // bilinear height, flipY = false: v = 0 is the top row; zero level 0.5
+    const x = Math.min(Math.max(U[i * 2] * w - 0.5, 0), w - 1.001), y = Math.min(Math.max(U[i * 2 + 1] * h - 0.5, 0), h - 1.001);
+    const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, k = y0 * w + x0;
+    const hh = ((d[k] * (1 - fx) + d[k + 1] * fx) * (1 - fy) + (d[k + w] * (1 - fx) + d[k + w + 1] * fx) * fy) / 255;
+    const dd = (hh * 2 - 1) * q.s;
+    P[i * 3] += N[i * 3] * dd; P[i * 3 + 1] += N[i * 3 + 1] * dd; P[i * 3 + 2] += N[i * 3 + 2] * dd;
+  }
+  const acc = new Float32Array(g.ids * 3), id = g.id, NN = new Float32Array(n * 3);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (let e = 0; e < 3; e++) { const j = id[idx[t + e]] * 3; acc[j] += nx; acc[j + 1] += ny; acc[j + 2] += nz; }
+  }
+  for (let i = 0; i < n; i++) {
+    const j = id[i] * 3, l = Math.hypot(acc[j], acc[j + 1], acc[j + 2]) || 1;
+    NN[i * 3] = acc[j] / l; NN[i * 3 + 1] = acc[j + 1] / l; NN[i * 3 + 2] = acc[j + 2] / l;
+  }
+  const r = { job: q.job, position: P, normal: NN }, tr = [P.buffer, NN.buffer];
+  if (q.full) for (const k of ['uv', 'tangent', 'index']) if (g[k]) { r[k] = g[k].slice(); tr.push(r[k].buffer); }
+  postMessage(r, tr);
+};`;
+const DISP_EDGE = 0.006, DISP_TRIS_MESH = 2.5e6, DISP_TRIS_ALL = 8e6;
 function dispLevels(g, budget) {
   const P = g.attributes.position, idx = g.index.array, tris = idx.length / 3, step = Math.max(1, Math.floor(tris / 4000));
   let sum = 0, k = 0;
@@ -204,63 +269,63 @@ function dispLevels(g, budget) {
   while (lv > 2 && tris * 4 ** lv > budget) lv--;
   return lv;
 }
-function displaceGeom(sub, tex, mm) {
-  const g = sub.clone(), P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv, n = P.count;
-  const px = heightPixels(tex), s = mm / 1000 * dispExag(), idx = g.index.array;
-  const id = new Uint32Array(n), keyOf = new Map();  // weld split (UV-seam) vertices for the normals
-  for (let i = 0; i < n; i++) {
-    const k = `${Math.round(P.getX(i) * 1e5)},${Math.round(P.getY(i) * 1e5)},${Math.round(P.getZ(i) * 1e5)}`;
-    let j = keyOf.get(k); if (j === undefined) { j = keyOf.size; keyOf.set(k, j); }
-    id[i] = j;
+const flat = (a) => { const r = new Float32Array(a.count * a.itemSize); for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) r[i * a.itemSize + c] = a.getComponent(i, c); return r; };
+const disp = { workers: [], jobs: new Map(), next: 0, url: null };
+function dispWorker(key) {
+  if (!disp.workers.length) {
+    disp.url = URL.createObjectURL(new Blob([DISP_WORKER], { type: 'text/javascript' }));
+    const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+    for (let i = 0; i < n; i++) {
+      const w = new Worker(disp.url); w.sent = new Map();   // texture uuid -> pixels posted
+      w.onmessage = ({ data }) => dispDone(data);
+      w.onerror = (e) => console.error('displacement worker', e);
+      disp.workers.push(w);
+    }
   }
-  for (let i = 0; i < n; i++) {
-    const dd = (sampleHeight(px, U.getX(i), U.getY(i)) * 2 - 1) * s;
-    P.setXYZ(i, P.getX(i) + N.getX(i) * dd, P.getY(i) + N.getY(i) * dd, P.getZ(i) + N.getZ(i) * dd);
-  }
-  const acc = new Float32Array(keyOf.size * 3), p = P.array;
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2], vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    for (const v of [idx[t], idx[t + 1], idx[t + 2]]) { const j = id[v] * 3; acc[j] += nx; acc[j + 1] += ny; acc[j + 2] += nz; }
-  }
-  for (let i = 0; i < n; i++) {
-    const j = id[i] * 3, l = Math.hypot(acc[j], acc[j + 1], acc[j + 2]) || 1;
-    N.setXYZ(i, acc[j] / l, acc[j + 1] / l, acc[j + 2] / l);
-  }
-  P.needsUpdate = N.needsUpdate = true; g.computeBoundingBox(); g.computeBoundingSphere();
-  return g;
+  let h = 0; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return disp.workers[Math.abs(h) % disp.workers.length];   // a mesh always goes to the same worker (its cached subdivision)
 }
-function subdivide(g) {
-  const idx = g.index.array, n = g.attributes.position.count;
-  const names = ['position', 'normal', 'uv', 'tangent'].filter((k) => g.attributes[k]);
-  const src = names.map((k) => g.attributes[k]), cap = n + idx.length;
-  const dst = src.map((a) => new Float32Array(cap * a.itemSize));
-  src.forEach((a, i) => { for (let v = 0; v < n; v++) for (let c = 0; c < a.itemSize; c++) dst[i][v * a.itemSize + c] = a.getComponent(v, c); });
-  const edges = new Map(), out = new Uint32Array(idx.length * 4);
-  let count = n, o = 0;
-  const mid = (a, b) => {
-    const key = a < b ? a * cap + b : b * cap + a;
-    let v = edges.get(key);
-    if (v !== undefined) return v;
-    v = count++; edges.set(key, v);
-    src.forEach((attr, i) => {
-      const s = attr.itemSize, d = dst[i];
-      for (let c = 0; c < s; c++) d[v * s + c] = (d[a * s + c] + d[b * s + c]) / 2;
-      if (names[i] === 'normal') { const l = Math.hypot(d[v * 3], d[v * 3 + 1], d[v * 3 + 2]) || 1; for (let c = 0; c < 3; c++) d[v * 3 + c] /= l; }
-    });
-    return v;
-  };
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t], b = idx[t + 1], c = idx[t + 2], ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
-    out.set([a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca], o); o += 12;
+function dispClear() { for (const w of disp.workers) { w.postMessage({ clear: true }); w.sent.clear(); } disp.jobs.clear(); dispBadge(); }
+function dispBadge() { setBadge('disp', disp.jobs.size ? `Рельеф (дисплейсмент): считается ${disp.jobs.size}…` : ''); }
+async function dispRequest(base, d, m, key) {
+  d.want = key;
+  const job = ++disp.next, w = dispWorker(d.id), tex = m.userData.heightTex, q = { job, sub: d.id, lv: d.lv, tex: tex.uuid, s: m.userData.heightMm / 1000 * dispExag(), full: !d.attrs };
+  disp.jobs.set(job, { base, d, key });
+  dispBadge();
+  const tr = [];
+  if (!w.sent.has(tex.uuid)) w.sent.set(tex.uuid, createImageBitmap(tex.image).then((img) => w.postMessage({ img, tex: tex.uuid }, [img])));
+  if (!d.posted) {   // the worker keeps the subdivided copy: the base arrays go once
+    d.posted = true;
+    const g = base, geom = { index: Uint32Array.from(g.index.array) };
+    for (const k of ['position', 'normal', 'uv', 'tangent']) if (g.attributes[k]) geom[k] = flat(g.attributes[k]);
+    q.geom = geom; tr.push(...Object.values(geom).map((a) => a.buffer));
   }
-  const r = new THREE.BufferGeometry();
-  names.forEach((k, i) => r.setAttribute(k, new THREE.BufferAttribute(dst[i].slice(0, count * src[i].itemSize), src[i].itemSize)));
-  r.setIndex(new THREE.BufferAttribute(out, 1));
-  return r;
+  await w.sent.get(tex.uuid);   // jobs and pixels keep their order per worker
+  w.postMessage(q, tr);
 }
-const denseOf = new WeakMap();   // base geometry -> { sub: subdivided copy, f: triangles per base triangle, geom: displaced copy, key }
+function dispDone(r) {
+  const j = disp.jobs.get(r.job);
+  disp.jobs.delete(r.job); dispBadge();
+  if (!j) return;
+  const { base, d, key } = j;
+  if (r.index) d.attrs = { uv: r.uv && new THREE.BufferAttribute(r.uv, 2), tangent: r.tangent && new THREE.BufferAttribute(r.tangent, 4), index: new THREE.BufferAttribute(r.index, 1) };
+  if (!dispOn || d.want !== key || denseOf.get(base) !== d) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(r.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(r.normal, 3));
+  if (d.attrs.uv) g.setAttribute('uv', d.attrs.uv);
+  if (d.attrs.tangent) g.setAttribute('tangent', d.attrs.tangent);
+  g.setIndex(d.attrs.index);
+  const users = meshes.filter((o) => o.userData.baseGeom === base);
+  const sh = users[0]?.userData.shift, s0 = d.shift0;   // a repivot after the base was sent moves the result the same way
+  if (sh && s0 && !sh.equals(s0)) g.translate(sh.x - s0.x, sh.y - s0.y, sh.z - s0.z);
+  g.computeBoundingBox(); g.computeBoundingSphere();
+  const old = d.geom;
+  d.geom = g; d.key = key;
+  for (const o of users) o.geometry = g;
+  old?.dispose();
+  syncCuts();
+}
+const denseOf = new WeakMap();   // base geometry -> { id, lv, f: triangles per base triangle, geom: displaced copy, key, attrs }
 let dispOn = false;
 function setDisplaceGeometry(on) {
   dispOn = on;
@@ -271,17 +336,19 @@ function setDisplaceGeometry(on) {
     if (!u.baseGeom) u.baseGeom = mesh.geometry;
     if (!on) { mesh.geometry = u.baseGeom; continue; }
     const base = u.baseGeom, m = [].concat(u.orig).find((x) => x.userData.heightTex), tris = base.index.count / 3;
-    const budget = Math.min(DISP_TRIS_MESH, DISP_TRIS_ALL * tris / total);
+    const lv = dispLevels(base, Math.min(DISP_TRIS_MESH, DISP_TRIS_ALL * tris / total));
     let d = denseOf.get(base);
-    const lv = dispLevels(base, budget);
     if (!d || d.lv !== lv) {
-      let sub = base; for (let i = 0; i < lv; i++) sub = subdivide(sub);
-      d && d.geom && d.geom.dispose(); d && d.sub.dispose();
-      d = { sub, lv, f: 4 ** lv, geom: null, key: '' }; denseOf.set(base, d);
+      d?.geom?.dispose();
+      d = { id: `${base.uuid}|${lv}`, lv, f: 4 ** lv, geom: null, key: '', want: '', shift0: (u.shift || new THREE.Vector3()).clone() };
+      denseOf.set(base, d);
     }
     const key = `${m.userData.heightTex.uuid}|${m.userData.heightMm}|${dispExag()}`;
-    if (d.key !== key) { d.geom?.dispose(); d.geom = displaceGeom(d.sub, m.userData.heightTex, m.userData.heightMm); d.key = key; }
-    mesh.geometry = d.geom;
+    if (d.key === key && d.geom) mesh.geometry = d.geom;
+    else {
+      if (d.geom) mesh.geometry = d.geom;   // the previous relief stays until the new one is ready
+      if (d.want !== key) dispRequest(base, d, m, key).catch((err) => console.error(err));
+    }
   }
   syncCuts();
 }
@@ -414,7 +481,11 @@ function setProgress(f, text) {
 }
 const mb = (n) => (n / 1048576).toFixed(1);
 // small non-blocking badge while the full-resolution textures stream in behind the preview
-function setHqBadge(text) {
+const badges = {};   // hq / disp -> text; one line each
+function setHqBadge(text) { setBadge('hq', text); }
+function setBadge(k, text) {
+  badges[k] = text;
+  text = Object.values(badges).filter(Boolean).join(' · ');
   let b = $('#hq-badge');
   if (!b) {
     b = document.createElement('div');
@@ -444,10 +515,8 @@ const srcBytes = (e) => (e.preview ? e.preview.bytes : e.bytes);
 async function loadSource(e, onBytes) {
   const p = e.preview;
   const heightSrc = e.heightMap && ((p && p.heightSrc) || e.heightMap.src);
-  const heightTex = heightSrc ? await loadHeight(heightSrc) : null;
   const parts = p ? p.parts : e.parts;
-  const buffer = await cached(bufCache, parts.join('|'), () => fetchParts(parts, onBytes));
-  setProgress(1, 'Распаковка…');
+  const [heightTex, buffer] = await Promise.all([heightSrc ? loadHeight(heightSrc) : null, cached(bufCache, parts.join('|'), () => fetchParts(parts, onBytes))]);
   const gltf = await loader.parseAsync(buffer, '');
   if (gltf.animations.length) gltf.scene.userData.clips = gltf.animations;
   let idx = 0;
@@ -486,20 +555,21 @@ async function loadModel(entry) {
   setHqBadge('');
   for (const t of liveTextures()) t.dispose();
   for (const m of modeCache.values()) m.dispose();
-  root.clear(); meshes.length = 0; modeCache.clear(); setAnim(null);
+  root.clear(); meshes.length = 0; modeCache.clear(); setAnim(null); dispClear();
   bufCache = new Map(); texCache = new Map();
   const items = entry.assembly ? entry.assembly.map((a) => ({ a, e: byId(a.id) })).filter((x) => x.e) : [{ a: null, e: entry }];
   const uniq = [...new Map(items.map((x) => [x.e.id, x.e])).values()];
   const total = uniq.reduce((n, e) => n + srcBytes(e), 0);
   let got = 0;
-  const onBytes = (n) => { got += n; setProgress(total ? got / total : 0, `Загрузка ${mb(got)} / ${mb(total)} МБ`); };
+  const onBytes = (n) => { got += n; setProgress(total ? got / total : 0, got < total ? `Загрузка ${mb(got)} / ${mb(total)} МБ` : 'Сборка сцены…'); };
   let gscene;
   if (entry.assembly) {
     gscene = new THREE.Group();
-    for (const { a, e } of items) {
+    const loaded = await Promise.all(items.map(({ e }) => loadSource(e, onBytes)));   // all parts download and parse at once
+    if (token !== loadToken) return;
+    for (const [i, { a, e }] of items.entries()) {
       const part = new THREE.Group();
-      part.add(await loadSource(e, onBytes));
-      if (token !== loadToken) return;
+      part.add(loaded[i]);
       part.name = a.name || e.id;
       part.userData.label = a.label || e.part;
       part.position.fromArray(a.pos || [0, 0, 0]);
@@ -514,6 +584,7 @@ async function loadModel(entry) {
       part.visible = !a.hidden;
       gscene.add(part);
     }
+    meshes.length = 0; gscene.traverse((o) => { if (o.isMesh && o.userData.orig) meshes.push(o); });   // assembly order, not arrival order
   } else {
     gscene = await loadSource(entry, onBytes);
     if (token !== loadToken) return;
@@ -552,40 +623,44 @@ async function upgradeTextures(entries, token) {
   let got = 0;
   const badge = () => setHqBadge(`Полные текстуры 8K: ${mb(got)} / ${mb(total)} МБ`);
   badge();
-  for (const e of entries) {
-    const buffer = await fetchParts(e.parts, (n) => { got += n; if (token === loadToken) badge(); });
-    if (token !== loadToken) return;
-    const gltf = await loader.parseAsync(buffer, '');
-    const heightTex = e.heightMap ? await new THREE.TextureLoader().loadAsync(e.heightMap.src) : null;
-    const full = [];
-    gltf.scene.traverse((o) => { if (o.isMesh) { full.push([].concat(o.material)); o.geometry.dispose(); } });
-    if (token !== loadToken) {
-      for (const ms of full) for (const m of ms) { for (const k of PREVIEW_MAPS) m[k]?.dispose(); m.dispose(); }
-      heightTex?.dispose();
-      return;
-    }
-    if (heightTex) { heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true; }
-    const old = new Set();
-    for (const o of meshes) {
-      if (o.userData.srcId !== e.id) continue;
-      const src = full[o.userData.srcIdx];
-      if (!src) continue;
-      [].concat(o.userData.orig).forEach((m, i) => {
-        const f = src[i];
-        if (!f) return;
-        for (const k of PREVIEW_MAPS) if (m[k] && f[k]) { old.add(m[k]); m[k] = f[k]; }
-        if (m.userData.normalMap && f.normalMap) { old.add(m.userData.normalMap); m.userData.normalMap = f.normalMap; }
-        if (heightTex && m.userData.heightTex) { old.add(m.userData.heightTex); m.userData.heightTex = heightTex; }
-      });
-    }
-    for (const ms of full) for (const m of ms) m.dispose();
-    for (const m of modeCache.values()) m.dispose();
-    modeCache.clear();
-    applyMode(mode);
-    for (const t of old) t.dispose();
-    fillTextures();
-  }
+  // every full file downloads at once; they are swapped in one by one as they arrive
+  let chain = Promise.resolve();
+  await Promise.all(entries.map((e) => fetchParts(e.parts, (n) => { got += n; if (token === loadToken) badge(); })
+    .then((buffer) => (chain = chain.then(() => swapFull(e, buffer, token))))));
+  await chain;
   if (token === loadToken) setHqBadge('');
+}
+async function swapFull(e, buffer, token) {
+  if (token !== loadToken) return;
+  const gltf = await loader.parseAsync(buffer, '');
+  const heightTex = e.heightMap ? await new THREE.TextureLoader().loadAsync(e.heightMap.src) : null;
+  const full = [];
+  gltf.scene.traverse((o) => { if (o.isMesh) { full.push([].concat(o.material)); o.geometry.dispose(); } });
+  if (token !== loadToken) {
+    for (const ms of full) for (const m of ms) { for (const k of PREVIEW_MAPS) m[k]?.dispose(); m.dispose(); }
+    heightTex?.dispose();
+    return;
+  }
+  if (heightTex) { heightTex.flipY = false; heightTex.colorSpace = THREE.NoColorSpace; heightTex.needsUpdate = true; }
+  const old = new Set();
+  for (const o of meshes) {
+    if (o.userData.srcId !== e.id) continue;
+    const src = full[o.userData.srcIdx];
+    if (!src) continue;
+    [].concat(o.userData.orig).forEach((m, i) => {
+      const f = src[i];
+      if (!f) return;
+      for (const k of PREVIEW_MAPS) if (m[k] && f[k]) { old.add(m[k]); m[k] = f[k]; }
+      if (m.userData.normalMap && f.normalMap) { old.add(m.userData.normalMap); m.userData.normalMap = f.normalMap; }
+      if (heightTex && m.userData.heightTex) { old.add(m.userData.heightTex); m.userData.heightTex = heightTex; }
+    });
+  }
+  for (const ms of full) for (const m of ms) m.dispose();
+  for (const m of modeCache.values()) m.dispose();
+  modeCache.clear();
+  applyMode(mode);
+  for (const t of old) t.dispose();
+  fillTextures();
 }
 // three r170 builds the bitangent as cross(normal, tangent) * tangent.w after the model transform, and a reflection turns
 // that cross product around: a mirrored part with glTF tangents would get its normal map's green channel inverted.
@@ -635,7 +710,7 @@ function syncCuts() {
   for (const { by, list } of cuts) for (const { o, keep, qkeep } of list) {
     const on = by.visible, base = o.userData.baseGeom || o.geometry;
     base.setDrawRange(0, on ? keep : Infinity);
-    const d = denseOf.get(base); if (d) for (const g of [d.sub, d.geom]) g?.setDrawRange(0, on ? keep * d.f : Infinity);
+    const d = denseOf.get(base); if (d) d.geom?.setDrawRange(0, on ? keep * d.f : Infinity);
     o.userData.quadLines?.geometry.setDrawRange(0, on ? qkeep : Infinity);
   }
 }
@@ -995,8 +1070,9 @@ const editBox = new THREE.Box3Helper(new THREE.Box3(), 0xffc24d);
 editBox.visible = false;
 scene.add(editBox);
 const edit = { on: false, parts: [], sel: null, dirty: false };
-const PART_NAMES = { Orc_Base: 'Тело + голова', Skirt_T: 'Юбка' };
-const GEAR_NAMES = { Pauldron: 'Наплечник', Bracer: 'Наруч', Boot: 'Ботинок' };
+const PART_NAMES = { Orc_Base: 'Тело + голова', Skirt_T: 'Юбка', Body: 'Тело', Head: 'Голова', Hair: 'Волосы', Horns: 'Рога', Chest: 'Нагрудник',
+  Belt: 'Пояс', Legs: 'Набедренная повязка', Tail: 'Хвост', Weapon: 'Булава' };
+const GEAR_NAMES = { Pauldron: 'Наплечник', Bracer: 'Наруч', Boot: 'Ботинок', Shoulder: 'Наплечник', Glove: 'Наруч' };
 const SIDE = { R: 'правый', L: 'левый' };
 function partLabel(o) {
   if (o.userData.label) return o.userData.label;
@@ -1009,6 +1085,8 @@ function partLabel(o) {
   if (m) return `Наруч ${m[1]} ${SIDE[m[2]]}`;
   m = /^(Pauldron|Bracer|Boot)_T_([RL])$/.exec(o.name);        // gear cut out of the Tripo models
   if (m) return `${GEAR_NAMES[m[1]]} ${SIDE[m[2]]}`;
+  m = /^(Shoulder|Glove|Boot)_([RL])$/.exec(o.name);              // Baine rig
+  if (m) return `${m[1] === 'Boot' ? 'Манжета копыта' : GEAR_NAMES[m[1]]} ${SIDE[m[2]]}`;
   return o.name || 'Деталь';
 }
 // left/right pairs (<name>_R / <name>_L, mirror images across x = 0): editing one moves the other mirrored
@@ -1031,7 +1109,7 @@ function syncMirror(p) {
 const editKeyName = () => `orc-edit:${current ? current.id : ''}`;
 
 tc.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value; });
-tc.addEventListener('objectChange', () => { syncMirror(edit.sel); fillEditFields(); markDirty(); });
+tc.addEventListener('objectChange', () => moved(edit.sel));
 
 // Parts come with their origin at the model's feet; move each part's pivot to the centre of its bounds so the gizmo
 // sits on the part and scaling / rotating happens around it (world positions stay exactly the same).
@@ -1048,7 +1126,7 @@ function repivot(part) {
   if (part.isMesh) {   // overlays / quad lines share this geometry; the displacement copy moves with it
     const u = part.userData;
     const d = u.baseGeom && denseOf.get(u.baseGeom);
-    for (const g of new Set([part.geometry, u.baseGeom, d?.sub, d?.geom].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
+    for (const g of new Set([part.geometry, u.baseGeom, d?.geom].filter(Boolean))) g.translate(-c.x, -c.y, -c.z);
     u.shift = (u.shift || new THREE.Vector3()).sub(c);   // a later Tripo geometry swap gets the same shift
   }
   else for (const ch of part.children) ch.position.sub(c);
@@ -1057,44 +1135,149 @@ function repivot(part) {
   part.traverse((o) => { if (o.geometry) { o.geometry.computeBoundingBox(); o.geometry.computeBoundingSphere(); } });
 }
 
+const hasMesh = (o) => { let m = false; o.traverse((x) => { if (x.isMesh) m = true; }); return m; };
+const hasBone = (o) => { let b = false; o.traverse((x) => { if (x.isBone) b = true; }); return b; };
+const hasSkin = (o) => { let b = false; o.traverse((x) => { if (x.isSkinnedMesh) b = true; }); return b; };
 function editOnLoad(gscene) {
-  // skinned (rigged) parts stay put: moving the mesh pivot would not move the bones (model floated ~1.2 m up)
-  edit.parts = gscene.children.filter((o) => { let m = false, sk = false; o.traverse((x) => { if (x.isMesh) m = true; if (x.isSkinnedMesh) sk = true; }); return m && !sk; });
-  for (const p of edit.parts) {
-    repivot(p);
+  // items: the parts of an assembly, or the meshes under the armature of a rigged model (as in orc-armory)
+  const top = gscene.children.flatMap((o) => (hasBone(o) && !o.isMesh ? o.children.filter((c) => !c.isBone && hasMesh(c)) : [o])).filter(hasMesh);
+  edit.parts = [];
+  edit.rigged = top.some(hasSkin);
+  if (edit.rigged) gscene.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.pose(); });   // items are measured in the bind pose
+  for (const o of top) {
+    const p = hasSkin(o) ? skinItem(o, gscene) : o;
+    if (p === o) repivot(p);
     p.updateMatrix();
     p.userData.base = { p: p.position.clone(), q: p.quaternion.clone(), s: p.scale.clone(), m: p.matrix.clone() };
+    edit.parts.push(p);
   }
   linkPairs();
   edit.dirty = false;
   select(null);
   const saved = applySaved();
+  for (const p of edit.parts) applySkin(p);
   buildPartList();
-  $('#edit-toggle').textContent = saved ? `✎ Редактировать · правок: ${saved}` : '✎ Редактировать';
+  $('#edit-toggle').textContent = saved ? `✎ Положение предметов · правок: ${saved}` : '✎ Положение предметов';
   setStatus(saved ? `Применено сохранённое положение: ${saved} дет.` : '');
+  $('#edit-motion').hidden = !edit.rigged;
+}
+// A skinned item can't be moved as a node: its vertices follow the bones. The move is written into its vertices in the bind
+// pose instead (v' = A^-1 * D * A * v, A: mesh bind space -> model space), so the item keeps its weights and moves with the
+// animation. A helper node at the item's centre carries D for the gizmo, the fields, mirroring and saving.
+function skinItem(o, gscene) {
+  gscene.updateMatrixWorld(true);
+  const toModel = gscene.matrixWorld.clone().invert(), list = [], box = new THREE.Box3(), v = new THREE.Vector3();
+  o.traverse((m) => {
+    if (!m.isSkinnedMesh) return;
+    const sk = m.skeleton, B = sk.bones[0].matrixWorld.clone().multiply(sk.boneInverses[0]);   // the same for every bone in the bind pose
+    const A = toModel.clone().multiply(m.matrixWorld).multiply(m.bindMatrixInverse).multiply(B).multiply(m.bindMatrix);
+    const g = m.geometry, orig = {};
+    for (const k of ['position', 'normal', 'tangent']) if (g.attributes[k]) {   // plain float copies (quantized / interleaved data too)
+      orig[k] = flat(g.attributes[k]);
+      g.setAttribute(k, new THREE.BufferAttribute(orig[k].slice(), g.attributes[k].itemSize));
+    }
+    for (let i = 0; i < orig.position.length; i += 3) box.expandByPoint(v.fromArray(orig.position, i).applyMatrix4(A));
+    list.push({ m, A, Ai: A.clone().invert(), orig });
+  });
+  const p = new THREE.Object3D();
+  p.name = o.name; p.userData.label = partLabel(o);
+  p.userData.skin = { list, box0: box.clone(), box: box.clone(), node: o };
+  p.position.copy(box.getCenter(v));
+  for (const { m } of list) m.userData.item = p;
+  gscene.add(p);
+  return p;
+}
+function applySkin(p) {
+  const sk = p && p.userData.skin;
+  if (!sk) return;
+  p.updateMatrix();
+  const D = p.matrix.clone().multiply(p.userData.base.m.clone().invert()), N = new THREE.Matrix3(), v = new THREE.Vector3();
+  sk.box.copy(sk.box0).applyMatrix4(D);
+  for (const { m, A, Ai, orig } of sk.list) {
+    const M = Ai.clone().multiply(D).multiply(A), g = m.geometry;
+    N.getNormalMatrix(M);
+    const P = g.attributes.position.array, o = orig.position;
+    for (let i = 0; i < o.length; i += 3) v.fromArray(o, i).applyMatrix4(M).toArray(P, i);
+    g.attributes.position.needsUpdate = true;
+    if (orig.normal) {
+      const a = g.attributes.normal.array, n = orig.normal;
+      for (let i = 0; i < n.length; i += 3) v.fromArray(n, i).applyMatrix3(N).normalize().toArray(a, i);
+      g.attributes.normal.needsUpdate = true;
+    }
+    if (orig.tangent) {
+      const a = g.attributes.tangent.array, t = orig.tangent;
+      for (let i = 0; i < t.length; i += 4) v.set(t[i], t[i + 1], t[i + 2]).transformDirection(M).toArray(a, i);
+      g.attributes.tangent.needsUpdate = true;
+    }
+    g.computeBoundingBox(); g.computeBoundingSphere(); m.boundingBox = null; m.boundingSphere = null;
+  }
+}
+// any change of an item: the mirrored partner follows, skinned vertices are rewritten, the fields refresh
+function moved(p) {
+  if (!p) return;
+  syncMirror(p);
+  applySkin(p);
+  if ($('#edit-mirror').checked) applySkin(p.userData.partner);
+  fillEditFields();
+  markDirty();
+}
+// rigged models: bind pose while placing (the gizmo sits on the item); «Проверить в движении» plays the clip with the edits
+function restPose(on) {
+  anim.rest = on;
+  if (on) {
+    anim.mixer?.stopAllAction();
+    curScene?.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.pose(); });
+  } else if (anim.mixer && anim.actions.length) {
+    anim.cur = null;
+    playClip(anim.last || anim.actions[0].getClip().name);
+  }
+  $('#edit-motion').classList.toggle('on', !on);
+  $('#edit-motion').textContent = on ? '▶ Проверить в движении' : '■ Вернуть позу для настройки';
+  if (edit.on) select(edit.sel);
 }
 function buildPartList() {
   const box = $('#edit-parts');
   box.innerHTML = '';
   for (const p of edit.parts) {
-    const b = document.createElement('button');
+    const row = document.createElement('div'), c = document.createElement('input'), b = document.createElement('button');
+    row.className = 'item';
+    c.type = 'checkbox'; c.checked = itemVisible(p); c.title = 'Показать / скрыть';
+    c.onchange = () => { setItemVisible(p, c.checked); if (!c.checked && edit.sel === p) select(null); };
     b.textContent = partLabel(p);
     b.onclick = () => select(p);
     p.userData.button = b;
-    box.append(b);
+    row.append(c, b);
+    box.append(row);
   }
+  markEdited();
 }
+const itemVisible = (p) => (p.userData.skin ? p.userData.skin.node.visible : p.visible);
+function setItemVisible(p, on) {
+  if (p.userData.skin) p.userData.skin.node.visible = on; else p.visible = on;
+  syncCuts();
+  const i = current.assembly && curScene ? curScene.children.indexOf(p) : -1;
+  const asm = i >= 0 && document.querySelectorAll('#asm-parts input')[i];
+  if (asm) asm.checked = on;
+}
+function markEdited() { for (const p of edit.parts) p.userData.button?.classList.toggle('edited', isEdited(p)); }
+function fitEditPanel() {   // between the model tabs (one or more rows) and the bottom edge
+  $('#edit-panel').style.maxHeight = `${Math.max(240, innerHeight - $('#parts').getBoundingClientRect().bottom - 24)}px`;
+}
+addEventListener('resize', fitEditPanel);
 function setEdit(on) {
   edit.on = on;
   $('#edit-panel').hidden = !on;
+  fitEditPanel();
   $('#edit-toggle').classList.toggle('on', on);
   tc.enabled = on;
+  if (edit.rigged) restPose(on);
   if (!on) select(null);
   else if (edit.parts.length === 1) select(edit.parts[0]);
 }
 function select(part) {
   edit.sel = part;
-  if (part) { tc.attach(part); editBox.visible = true; } else { tc.detach(); editBox.visible = false; }
+  const gizmo = part && (!part.userData.skin || anim.rest);   // a skinned item's gizmo matches it only in the bind pose
+  if (gizmo) { tc.attach(part); editBox.visible = true; } else { tc.detach(); editBox.visible = false; }
   for (const p of edit.parts) p.userData.button && p.userData.button.classList.toggle('on', p === part);
   $('#edit-sel').textContent = part ? `Выбрано: ${partLabel(part)}` : 'Кликните по детали модели или выберите её здесь:';
   $('#edit-fields').classList.toggle('off', !part);
@@ -1112,24 +1295,79 @@ function fillEditFields() {
   $('#edit-raw').title = !p ? 'Выберите деталь' : raw ? 'Показать геометрию детали ровно такой, какой её сделал Tripo, без подгонки к телу'
     : 'Эта деталь не деформировалась: её геометрия и так как из Tripo';
   $('#edit-remove').disabled = !(p && p.userData.added);
-  if (!p) { for (const id of ['#edit-scale', '#edit-x', '#edit-y', '#edit-z']) $(id).value = ''; return; }
-  const b = p.userData.base;
-  $('#edit-scale').value = (p.scale.x / b.s.x * 100).toFixed(1);
-  const d = p.position.clone().sub(b.p).multiplyScalar(100);
-  $('#edit-x').value = d.x.toFixed(1); $('#edit-y').value = d.y.toFixed(1); $('#edit-z').value = d.z.toFixed(1);
+  const v = p ? readPlace(p) : null;
+  for (const r of PLACE) {
+    if (!r.k) continue;
+    const rg = r.row.querySelector('input[type=range]'), num = r.row.querySelector('input[type=number]'), val = v ? v[r.k] : r.zero;
+    if (val < +rg.min || val > +rg.max) {   // widen the slider for a big move
+      const w = Math.max(Math.abs(val - r.zero) * 1.5, r.max - r.zero);
+      rg.min = r.zero - w; rg.max = r.zero + w;
+    }
+    if (document.activeElement !== rg) rg.value = val;
+    if (document.activeElement !== num) num.value = v ? +val.toFixed(r.k === 's' ? 1 : r.unit === '°' ? 1 : 2) : '';
+    r.row.classList.toggle('moved', !!v && Math.abs(val - r.zero) > 0.005);
+  }
+  markEdited();
 }
-function setScalePct(pct) {
+// The placement fields: offsets from the item's own place in the character's terms (he faces +Z, his right is -X),
+// turns about the item's centre, size in % of the original.
+const PLACE = [
+  { sec: 'Сдвиг' },
+  { k: 'x', label: 'Влево ↔ вправо', sub: 'для персонажа', unit: 'см', min: -30, max: 30, step: 0.1, nudge: 0.5, zero: 0 },
+  { k: 'y', label: 'Вниз ↔ вверх', unit: 'см', min: -30, max: 30, step: 0.1, nudge: 0.5, zero: 0 },
+  { k: 'z', label: 'Назад ↔ вперёд', unit: 'см', min: -30, max: 30, step: 0.1, nudge: 0.5, zero: 0 },
+  { sec: 'Поворот вокруг центра предмета' },
+  { k: 'rx', label: 'Наклон назад ↔ вперёд', unit: '°', min: -90, max: 90, step: 0.5, nudge: 1, zero: 0 },
+  { k: 'ry', label: 'Поворот влево ↔ вправо', sub: 'вокруг вертикали', unit: '°', min: -180, max: 180, step: 0.5, nudge: 1, zero: 0 },
+  { k: 'rz', label: 'Наклон влево ↔ вправо', unit: '°', min: -90, max: 90, step: 0.5, nudge: 1, zero: 0 },
+  { sec: 'Размер' },
+  { k: 's', label: 'Меньше ↔ больше', unit: '%', min: 50, max: 200, step: 0.5, nudge: 1, zero: 100 },
+];
+const yawQ = () => (curScene ? curScene.quaternion.clone() : new THREE.Quaternion());
+const D2R = THREE.MathUtils.degToRad, R2D = THREE.MathUtils.radToDeg;
+function readPlace(p) {
+  const b = p.userData.base, yq = yawQ(), yi = yq.clone().invert();
+  const d = p.position.clone().sub(b.p).applyQuaternion(yq).multiplyScalar(100);
+  const qv = yq.clone().multiply(p.quaternion.clone().multiply(b.q.clone().invert())).multiply(yi);
+  const e = new THREE.Euler().setFromQuaternion(qv, 'XYZ');
+  return { x: -d.x, y: d.y, z: d.z, rx: R2D(e.x), ry: -R2D(e.y), rz: R2D(e.z), s: p.scale.x / b.s.x * 100 };
+}
+function writePlace(p, v) {
+  const b = p.userData.base, yq = yawQ(), yi = yq.clone().invert();
+  p.position.copy(b.p).add(new THREE.Vector3(-v.x, v.y, v.z).multiplyScalar(0.01).applyQuaternion(yi));
+  const qv = new THREE.Quaternion().setFromEuler(new THREE.Euler(D2R(v.rx), D2R(-v.ry), D2R(v.rz), 'XYZ'));
+  p.quaternion.copy(yi.clone().multiply(qv).multiply(yq)).multiply(b.q);
+  p.scale.copy(b.s).multiplyScalar(Math.max(1, v.s) / 100);
+}
+function setPlace(k, val) {
   const p = edit.sel;
-  if (!p || !(pct > 0)) return;
-  p.scale.copy(p.userData.base.s).multiplyScalar(pct / 100);
-  syncMirror(p); fillEditFields(); markDirty();
+  if (!p || !Number.isFinite(val)) return;
+  const v = readPlace(p);
+  v[k] = val;
+  writePlace(p, v);
+  moved(p);
 }
-function setOffsetCm(xyz) {
-  const p = edit.sel;
-  if (!p) return;
-  p.position.copy(p.userData.base.p).add(new THREE.Vector3(...xyz.map((v) => (+v || 0) / 100)));
-  syncMirror(p); fillEditFields(); markDirty();
+function buildPlace() {
+  const box = $('#place');
+  for (const r of PLACE) {
+    if (r.sec) { const h = document.createElement('div'); h.className = 'psec'; h.textContent = r.sec; box.append(h); continue; }
+    const row = document.createElement('div');
+    row.className = 'prow';
+    const tip = `шаг ${r.nudge} ${r.unit}, с Shift ×10`;
+    row.innerHTML = `<span class="pl" title="Двойной клик — вернуть как было">${r.label}${r.sub ? `<small>${r.sub}</small>` : ''}</span>`
+      + `<button title="${tip}">−</button><input type="range" min="${r.min}" max="${r.max}" step="${r.step}" value="${r.zero}">`
+      + `<button title="${tip}">+</button><input type="number" step="${r.step}"><span class="pu">${r.unit}</span>`;
+    const [minus, plus] = row.querySelectorAll('button'), rg = row.querySelector('input[type=range]'), num = row.querySelector('input[type=number]');
+    const nudge = (sgn, e) => { if (edit.sel) setPlace(r.k, readPlace(edit.sel)[r.k] + sgn * r.nudge * (e.shiftKey ? 10 : 1)); };
+    minus.onclick = (e) => nudge(-1, e); plus.onclick = (e) => nudge(1, e);
+    rg.oninput = () => setPlace(r.k, +rg.value);
+    num.onchange = () => setPlace(r.k, +num.value);
+    row.querySelector('.pl').ondblclick = () => setPlace(r.k, r.zero);
+    r.row = row;
+    box.append(row);
+  }
 }
+buildPlace();
 function resetPart(p) {
   const b = p.userData.base;
   p.position.copy(b.p); p.quaternion.copy(b.q); p.scale.copy(b.s);
@@ -1151,6 +1389,8 @@ function editsJSON() {
       label: partLabel(p),
       ...(p.userData.added ? { added: p.userData.added } : {}),
       ...(p.userData.raw ? { raw: true } : {}),
+      ...(p.userData.skin ? { skinned: 'delta_matrix is applied to the vertices in model space, bind pose' } : {}),
+      place: Object.fromEntries(Object.entries(readPlace(p)).map(([k, v]) => [k, +v.toFixed(2)])),
       // apply to the part as it is in the GLB: new = delta_matrix x old (column-major 4x4, glTF space)
       delta_matrix: p.matrix.clone().multiply(b.m.clone().invert()).toArray().map((v) => +v.toFixed(6)),
       pivot: b.p.toArray().map((v) => +v.toFixed(5)),
@@ -1356,7 +1596,7 @@ function saveEdits() {
   const n = Object.keys(data.parts).length;
   if (n) localStorage.setItem(editKeyName(), JSON.stringify(data)); else localStorage.removeItem(editKeyName());
   edit.dirty = false;
-  $('#edit-toggle').textContent = n ? `✎ Редактировать · правок: ${n}` : '✎ Редактировать';
+  $('#edit-toggle').textContent = n ? `✎ Положение предметов · правок: ${n}` : '✎ Положение предметов';
   setStatus(n ? `Положение сохранено (${new Date().toLocaleTimeString()}). ${Object.values(data.parts).map(describe).join('; ')}.`
               : 'Всё на исходных местах — сохранённое положение для этой модели удалено.');
   return data;
@@ -1367,15 +1607,29 @@ async function exportGLB() {
   scene.traverse((o) => { if ((o.isLineSegments || o.userData.isOverlay || o === o.parent?.userData.overlay) && o.visible) { o.visible = false; hidden.push(o); } });
   for (const m of meshes) m.material = m.userData.orig;
   setDisplaceGeometry(false);
+  const rig = edit.rigged, wasRest = anim.rest;
+  if (rig) {   // the whole rig in the bind pose with every clip; the helper nodes stay out
+    restPose(true);
+    for (const p of edit.parts) if (p.userData.skin && p.visible) { p.visible = false; hidden.push(p); }
+  }
+  const jpeg = new Map();   // the exporter re-encodes every texture: opaque ones as JPEG (PNG made a 16 MB rig 200 MB)
+  for (const m of meshes) for (const mat of [].concat(m.material)) for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) {
+    const t = mat[k];
+    if (!t || jpeg.has(t) || (k === 'map' && (mat.transparent || mat.alphaTest > 0))) continue;
+    jpeg.set(t, t.userData.mimeType); t.userData.mimeType = 'image/jpeg';
+  }
   try {
-    const glb = await new GLTFExporter().parseAsync(edit.parts, { binary: true, maxTextureSize: 4096 });
+    const glb = await new GLTFExporter().parseAsync(rig ? curScene : edit.parts,
+      { binary: true, maxTextureSize: 4096, ...(rig ? { animations: curScene.userData.clips || [] } : {}) });
     download(new Blob([glb], { type: 'model/gltf-binary' }), `${current.id}-edited.glb`);
     setStatus(`GLB с правками скачан: ${current.id}-edited.glb (${(glb.byteLength / 1048576).toFixed(1)} МБ).`);
   } catch (err) {
     setStatus(`Не удалось собрать GLB: ${err.message}`);
   } finally {
     for (const o of hidden) o.visible = true;
+    for (const [t, v] of jpeg) if (v === undefined) delete t.userData.mimeType; else t.userData.mimeType = v;
     applyMode(mode);
+    if (rig && !wasRest) restPose(false);
   }
 }
 function editKey(e) {
@@ -1397,16 +1651,23 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
   const hit = ray.intersectObjects(meshes, false).find((h) => shown(h.object));
   let p = hit && hit.object;
-  while (p && !edit.parts.includes(p)) p = p.parent;
+  while (p && !edit.parts.includes(p)) p = p.userData.item || p.parent;
   select(p || null);
 });
 $('#edit-toggle').onclick = () => setEdit(!edit.on);
 $('#edit-exit').onclick = () => setEdit(false);
 for (const b of document.querySelectorAll('#edit-tools button')) b.onclick = () => setTool(b.dataset.tool);
-$('#edit-scale').onchange = (e) => setScalePct(+e.target.value);
-for (const id of ['#edit-x', '#edit-y', '#edit-z']) $(id).onchange = () => setOffsetCm([$('#edit-x').value, $('#edit-y').value, $('#edit-z').value]);
-$('#edit-reset').onclick = () => { if (edit.sel) { resetPart(edit.sel); syncMirror(edit.sel); fillEditFields(); markDirty(); } };
-$('#edit-reset-all').onclick = () => { for (const p of edit.parts) { resetPart(p); if (p.userData.raw) setRaw(p, false).catch(showEditError); } fillEditFields(); markDirty(); };
+$('#edit-reset').onclick = () => { if (edit.sel) { resetPart(edit.sel); moved(edit.sel); } };
+$('#edit-reset-all').onclick = () => {
+  for (const p of edit.parts) { resetPart(p); applySkin(p); if (p.userData.raw) setRaw(p, false).catch(showEditError); }
+  fillEditFields(); markDirty();
+};
+$('#edit-motion').onclick = () => restPose(!anim.rest);
+$('#edit-json').onclick = () => {
+  const data = editsJSON();
+  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${current.id}-placement.json`);
+  setStatus(`JSON скачан: ${current.id}-placement.json (${Object.keys(data.parts).length} дет.).`);
+};
 $('#edit-raw').onclick = () => toggleRaw().catch(showEditError);
 $('#edit-remove').onclick = () => removePart(edit.sel);
 $('#edit-add-btn').onclick = async () => {
@@ -1422,9 +1683,9 @@ setTool('translate');
 
 // ---------- animation (rigged entries: one GLB with several glTF clips) ----------
 const clock = new THREE.Clock();
-const anim = { mixer: null, actions: [], cur: null, paused: false };
+const anim = { mixer: null, actions: [], cur: null, paused: false, rest: false, last: null };
 function setAnim(gscene) {
-  anim.mixer?.stopAllAction(); anim.mixer = null; anim.actions = []; anim.cur = null;
+  anim.mixer?.stopAllAction(); anim.mixer = null; anim.actions = []; anim.cur = null; anim.last = null; anim.rest = false;
   const clips = gscene?.userData.clips;
   $('#anim-box').hidden = !clips;
   if (!clips) return;
@@ -1438,19 +1699,54 @@ function setAnim(gscene) {
   }
   const order = Object.keys(CLIP_NAMES), rank = (b) => (order.indexOf(b.dataset.clip) + 1) || 99;
   box.append(...[...box.children].sort((a, b) => rank(a) - rank(b)));
-  playClip(clips.some((c) => c.name === 'Idle') ? 'Idle' : clips[0].name);
+  playClip(clips.find((c) => /^idle$/i.test(c.name))?.name || clips[0].name);
+  if (edit.on && edit.rigged) restPose(true);
 }
-const CLIP_NAMES = { Idle: 'Стойка', Walk: 'Шаг', Attack: 'Удар', Roar: 'Рёв' };
+const ORC_CLIPS = { idle: 'Стойка (орк)', walk: 'Ходьба', run: 'Бег', slash: 'Удар мечом', cheer: 'Ликование', rig_test: 'Тест рига' };
+const CLIP_NAMES = { Idle: 'Стойка', Walk: 'Шаг', Attack: 'Удар', Roar: 'Рёв',
+  ...Object.fromEntries(Object.entries(ORC_CLIPS).map(([k, v]) => [`Orc${k.replace(/(^|_)(\w)/g, (_, a, c) => c.toUpperCase())}`, v])), ...ORC_CLIPS };
 function playClip(name) {
   const next = anim.actions.find((a) => a.getClip().name === name);
   if (!next) return;
+  anim.last = name;
+  if (anim.rest) { restPose(false); return; }   // a clip picked while placing items: show the motion
   next.reset().play();
   if (anim.cur && anim.cur !== next) anim.cur.crossFadeTo(next, 0.25, false);
   anim.cur = next;
   for (const b of document.querySelectorAll('#anim-clips button')) b.classList.toggle('on', b.dataset.clip === name);
 }
 $('#anim-speed').oninput = (e) => { $('#anim-speed-v').textContent = `×${(+e.target.value).toFixed(2)}`; if (anim.mixer) anim.mixer.timeScale = +e.target.value; };
-$('#anim-pause').onclick = () => { anim.paused = !anim.paused; $('#anim-pause').classList.toggle('on', anim.paused); $('#anim-pause').textContent = anim.paused ? 'Продолжить' : 'Пауза'; };
+function setPaused(on) {
+  anim.paused = on;
+  $('#anim-pause').classList.toggle('on', on);
+  $('#anim-pause').textContent = on ? '▶' : '⏸';
+  $('#anim-pause').title = on ? 'Продолжить (пробел)' : 'Пауза (пробел)';
+}
+$('#anim-pause').onclick = () => setPaused(!anim.paused);
+$('#anim-scrub').oninput = (e) => {   // drag through the clip: pauses it
+  if (!anim.cur || anim.rest) return;
+  seekClip(+e.target.value * anim.cur.getClip().duration);
+};
+function seekClip(t) {   // a still frame of the current clip (no half-done crossfade from the previous one)
+  setPaused(true);
+  for (const a of anim.actions) if (a !== anim.cur) a.stop();
+  anim.cur.stopFading().setEffectiveWeight(1);
+  anim.cur.time = t;
+  anim.mixer.update(0);
+}
+addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || !anim.mixer || /INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
+  e.preventDefault();
+  setPaused(!anim.paused);
+});
+function animUI() {
+  const a = anim.cur, d = a ? a.getClip().duration : 0, t = a && !anim.rest ? a.time % (d || 1) : 0;
+  const sc = $('#anim-scrub');
+  if (document.activeElement !== sc) sc.value = d ? t / d : 0;
+  sc.disabled = anim.rest;
+  const txt = anim.rest ? 'поза настройки' : `${t.toFixed(2)} / ${d.toFixed(2)} с`;
+  if ($('#anim-time').textContent !== txt) $('#anim-time').textContent = txt;
+}
 
 // ---------- loop ----------
 function resize() {
@@ -1467,10 +1763,12 @@ addEventListener('resize', resize);
 resize();
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.1);
-  if (anim.mixer && !anim.paused) anim.mixer.update(dt);
+  if (anim.mixer && !anim.paused && !anim.rest) anim.mixer.update(dt);
+  if (anim.mixer) animUI();
   controls.update();
   if (tc.camera !== camera) tc.camera = camera;
-  if (edit.sel) editBox.box.setFromObject(edit.sel);
+  if (edit.sel?.userData.skin) editBox.box.copy(edit.sel.userData.skin.box).applyMatrix4(edit.sel.parent.matrixWorld);
+  else if (edit.sel) editBox.box.setFromObject(edit.sel);
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(frame);
@@ -1481,8 +1779,8 @@ window.viewer = {
   edit: {
     toggle: (on) => setEdit(on === undefined ? !edit.on : on),
     select: (name) => select(edit.parts.find((p) => p.name === name) || null),
-    offset: (x, y, z) => setOffsetCm([x, y, z]),
-    scale: (pct) => setScalePct(pct),
+    place: (v) => { if (!edit.sel) return null; if (v) { writePlace(edit.sel, { ...readPlace(edit.sel), ...v }); moved(edit.sel); } return readPlace(edit.sel); },
+    motion: (on) => restPose(!on),
     save: () => saveEdits(),
     json: () => editsJSON(),
     glb: () => exportGLB(),
@@ -1492,7 +1790,7 @@ window.viewer = {
     state: () => ({ on: edit.on, sel: edit.sel && edit.sel.name, raw: !!(edit.sel && edit.sel.userData.raw), parts: edit.parts.map((p) => p.name), tool: tc.mode, saved: localStorage.getItem(editKeyName()), status: $('#edit-status').textContent }),
   },
   mode: (id) => applyMode(id),
-  anim: (name, t) => { if (name) playClip(name); if (t !== undefined && anim.cur) { anim.cur.time = t; anim.mixer.update(0); } return { clips: anim.actions.map((a) => a.getClip().name), cur: anim.cur && anim.cur.getClip().name }; },
+  anim: (name, t) => { if (name) playClip(name); if (t !== undefined && anim.cur) seekClip(t); return { clips: anim.actions.map((a) => a.getClip().name), cur: anim.cur && anim.cur.getClip().name }; },
   camera: (name) => setCamera(name),
   look: (pos, target) => { camera.position.set(...pos); controls.target.set(...target); controls.update(); },
   box: () => { const b = new THREE.Box3(); for (const o of meshes) b.expandByObject(o); return [b.min.toArray(), b.max.toArray()]; },

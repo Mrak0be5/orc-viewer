@@ -15,10 +15,10 @@
 <body>
 <div id="view"></div>
 <nav id="parts"><div id="part-tabs"></div><div id="versions"></div></nav>
-<button id="edit-toggle" title="Выбрать деталь модели, подвинуть / повернуть / увеличить и сохранить">✎ Редактировать</button>
+<button id="edit-toggle" title="Выбрать предмет на персонаже и настроить его положение, поворот и размер">✎ Положение предметов</button>
 
 <div id="edit-panel" hidden>
-  <div class="edit-head"><b>Редактирование</b><button id="edit-exit" title="Выйти (правки остаются на экране)">✕</button></div>
+  <div class="edit-head"><b>Положение предметов</b><button id="edit-exit" title="Выйти (правки остаются на экране)">✕</button></div>
   <p id="edit-sel" class="hint">Кликните по детали модели или выберите её здесь:</p>
   <div id="edit-parts" class="grid"></div>
   <div id="edit-add"><select id="edit-add-model" title="Любая модель из списка — добавится рядом с моделью"></select><button id="edit-add-btn">+ Добавить</button></div>
@@ -28,21 +28,19 @@
     <button data-tool="scale">Масштаб<kbd>S</kbd></button>
   </div>
   <div id="edit-fields">
-    <label class="range">Масштаб, % <input type="number" id="edit-scale" step="1" min="1"></label>
-    <div class="xyz">Сдвиг, см
-      <label>X<input type="number" id="edit-x" step="0.5"></label>
-      <label>Y<input type="number" id="edit-y" step="0.5"></label>
-      <label>Z<input type="number" id="edit-z" step="0.5"></label>
-    </div>
+    <p class="hint place-hint">Стороны — от лица персонажа. Тяните ползунок, вводите число или жмите −/+ (с Shift — шаг ×10). Двойной клик по названию — вернуть на место.</p>
+    <div id="place"></div>
     <label class="check"><input type="checkbox" id="edit-mirror" checked> Пары левый/правый — зеркально</label>
-    <p class="hint">X — вправо, Y — вверх, Z — вперёд (к зрителю на виде спереди). Оси гизмо можно тянуть мышью.</p>
+    <p class="hint">Мышью: тяните стрелки или кольца гизмо на модели.</p>
   </div>
+  <button id="edit-motion" class="wide" hidden title="Персонаж в исходной позе, пока вы двигаете предметы. Здесь можно посмотреть правку в анимации">▶ Проверить в движении</button>
   <div class="grid">
     <button id="edit-raw">Как из Tripo (без деформации)</button>
     <button id="edit-remove" title="Убрать добавленную деталь">Убрать деталь</button>
     <button id="edit-reset">Сбросить деталь</button>
     <button id="edit-reset-all">Сбросить всё</button>
     <button id="edit-save" class="primary" title="Запомнить положение деталей (без скачивания файлов)">Сохранить <kbd>Ctrl+S</kbd></button>
+    <button id="edit-json" title="Скачать смещения предметов (см, градусы, %) в JSON">Скачать JSON</button>
     <button id="edit-glb" title="Скачать модель с текущими правками">Скачать GLB</button>
   </div>
   <p id="edit-status" class="hint"></p>
@@ -56,10 +54,10 @@
   </header>
 
   <section id="anim-box" hidden>
-    <h2>Анимация <small>риг в Blender, клипы glTF</small></h2>
+    <h2>Анимация <small>клипы glTF</small></h2>
     <div id="anim-clips" class="grid"></div>
     <label class="range">Скорость <input type="range" id="anim-speed" min="0.1" max="2" step="0.05" value="1"> <span id="anim-speed-v">×1.00</span></label>
-    <p><button id="anim-pause">Пауза</button></p>
+    <div class="scrub"><button id="anim-pause" title="Пауза / продолжить (пробел)">⏸</button><input type="range" id="anim-scrub" min="0" max="1" step="0.001" value="0"><span id="anim-time">0.00 / 0.00 с</span></div>
   </section>
 
   <section>

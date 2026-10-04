@@ -67,7 +67,7 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
 /* edit mode */
 #edit-toggle { position: fixed; top: 12px; right: 332px; z-index: 6; padding: 7px 12px; font-weight: 600; }
 #edit-toggle.on { background: #7a5a1e; border-color: #e0a943; }
-#edit-panel { position: fixed; left: 12px; bottom: 12px; width: 330px; z-index: 6; background: rgba(21, 22, 24, .95); border: 1px solid #3a3d44; border-radius: 10px; padding: 10px 12px 12px; }
+#edit-panel { position: fixed; left: 12px; bottom: 12px; width: 370px; max-height: calc(100vh - 90px); overflow-y: auto; z-index: 6; background: rgba(21, 22, 24, .95); border: 1px solid #3a3d44; border-radius: 10px; padding: 10px 12px 12px; }
 #edit-panel[hidden] { display: none; }
 #edit-panel .edit-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 #edit-panel .edit-head button { padding: 2px 8px; }
@@ -86,3 +86,22 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
 #edit-panel label.check { display: flex; gap: 6px; align-items: center; margin-top: 8px; cursor: pointer; }
 #pbr-maps label small { color: #8a8f99; margin-left: 4px; }
 #pbr-maps label.off { opacity: .45; }
+#place { margin-top: 6px; }
+#place .prow { display: grid; grid-template-columns: 1fr 22px 92px 22px 54px 18px; gap: 4px; align-items: center; margin-top: 5px; font-size: 12px; }
+#place .prow .pl { cursor: pointer; color: #c9ccd2; line-height: 1.15; }
+#place .prow .pl small { display: block; color: #7d838c; font-size: 10.5px; }
+#place .prow.moved .pl { color: #ffc24d; }
+#place .prow button { padding: 1px 0; }
+#place .prow input[type=range] { width: 100%; }
+#place .prow .pu { color: #8a909a; }
+#place .psec { margin-top: 8px; color: #8a909a; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+#edit-parts .item { display: flex; gap: 4px; align-items: stretch; }
+#edit-parts .item input { margin: 0 2px; }
+#edit-parts .item button { flex: 1; text-align: left; }
+#edit-parts .item button.edited::after { content: ' •'; color: #ffc24d; }
+#edit-motion { margin-top: 8px; width: 100%; }
+#edit-motion.on { background: #5a4a2f; border-color: #c9a35a; }
+#anim-box .scrub { display: grid; grid-template-columns: 34px 1fr 92px; gap: 6px; align-items: center; margin-top: 8px; }
+#anim-box .scrub span { font: 11px ui-monospace, monospace; color: #9aa0a8; text-align: right; }
+#edit-parts { gap: 4px; }
+#edit-parts .item button { padding: 3px 7px; font-size: 12px; line-height: 1.25; }
