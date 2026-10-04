@@ -1569,7 +1569,7 @@ async function applyGeom(part) {
     }
   }
 }
-function refreshGeom() {
+function refreshGeom() { fitNote();
   applyMode(mode);
   fillPolys({ scene: curScene });
   if (edit.sel) fillEditFields();
@@ -1594,8 +1594,16 @@ async function setFit(v) {
   refreshGeom(); markDirty();
   setStatus(`Подгонка к телу: ${FITS[v]}.`);
 }
+function fitNote() {   // items showing the original mesh ignore the fit switch: say so next to it
+  const el = $('#asm-fit-raw');
+  if (!el) return;
+  const raw = curScene ? curScene.children.filter((p) => p.userData.wrap && p.userData.raw).map(partLabel) : [];
+  el.hidden = !raw.length;
+  el.textContent = raw.length ? `Без подгонки (включён «исходный меш» в «Положении предметов»): ${raw.join(', ')}.` : '';
+}
 function syncFitUi() {
   for (const r of document.querySelectorAll('#asm-fit input')) r.checked = r.value === fitVariant;
+  fitNote();
   if (current) history.replaceState(null, '', `?m=${current.id}${current.assembly && fitVariant !== 'manual' ? `&fit=${fitVariant}` : ''}`);
 }
 async function toggleRaw() {

@@ -107,3 +107,4 @@ button kbd { float: right; color: #8a909a; font: 11px ui-monospace, monospace; }
 #edit-parts .item button { padding: 3px 7px; font-size: 12px; line-height: 1.25; }
 #asm-fit { margin-bottom: 12px; }
 #asm-fit label small { color: #8a8f99; }
+#asm-fit-raw { color: #e0b060; }
